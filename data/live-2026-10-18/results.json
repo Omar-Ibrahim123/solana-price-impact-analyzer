@@ -1,0 +1,308 @@
+{
+  "phoenix": {
+    "buy": [
+      {
+        "venue": "phoenix",
+        "side": "buy",
+        "target_usd": 1000.0,
+        "filled_usd": 1000.0903999999999,
+        "filled_base": 9.584,
+        "avg_price": 104.35,
+        "mid_price": 104.05,
+        "impact_bps": 28.83229216722702,
+        "levels_swept": 1,
+        "fully_filled": true
+      },
+      {
+        "venue": "phoenix",
+        "side": "buy",
+        "target_usd": 10000.0,
+        "filled_usd": 10000.0612,
+        "filled_base": 95.798,
+        "avg_price": 104.38695171089167,
+        "mid_price": 104.05,
+        "impact_bps": 32.383633915585605,
+        "levels_swept": 2,
+        "fully_filled": true
+      },
+      {
+        "venue": "phoenix",
+        "side": "buy",
+        "target_usd": 100000.0,
+        "filled_usd": 100000.07688,
+        "filled_base": 826.172,
+        "avg_price": 121.04026386757236,
+        "mid_price": 104.05,
+        "impact_bps": 1632.894172760439,
+        "levels_swept": 59,
+        "fully_filled": true
+      },
+      {
+        "venue": "phoenix",
+        "side": "buy",
+        "target_usd": 1000000.0,
+        "filled_usd": 1001963.998473,
+        "filled_base": 1446.849,
+        "avg_price": 692.5145598974046,
+        "mid_price": 104.05,
+        "impact_bps": 56555.94040340266,
+        "levels_swept": 167,
+        "fully_filled": true
+      }
+    ],
+    "sell": [
+      {
+        "venue": "phoenix",
+        "side": "sell",
+        "target_usd": 1000.0,
+        "filled_usd": 1000.04625,
+        "filled_base": 9.639,
+        "avg_price": 103.75,
+        "mid_price": 104.05,
+        "impact_bps": 28.83229216722702,
+        "levels_swept": 1,
+        "fully_filled": true
+      },
+      {
+        "venue": "phoenix",
+        "side": "sell",
+        "target_usd": 10000.0,
+        "filled_usd": 10000.003836,
+        "filled_base": 103.998,
+        "avg_price": 96.15573218715744,
+        "mid_price": 104.05,
+        "impact_bps": 758.6994534207167,
+        "levels_swept": 2,
+        "fully_filled": true
+      },
+      {
+        "venue": "phoenix",
+        "side": "sell",
+        "target_usd": 100000.0,
+        "filled_usd": 100000.001761,
+        "filled_base": 7414.089,
+        "avg_price": 13.487834009141245,
+        "mid_price": 104.05,
+        "impact_bps": 8703.71609715125,
+        "levels_swept": 151,
+        "fully_filled": true
+      },
+      {
+        "venue": "phoenix",
+        "side": "sell",
+        "target_usd": 1000000.0,
+        "filled_usd": 103397.72211300001,
+        "filled_base": 136035.874,
+        "avg_price": 0.7600768758467343,
+        "mid_price": 104.05,
+        "impact_bps": 9926.950804820111,
+        "levels_swept": 167,
+        "fully_filled": false
+      }
+    ]
+  },
+  "kraken": {
+    "buy": [
+      {
+        "venue": "kraken",
+        "side": "buy",
+        "target_usd": 1000.0,
+        "filled_usd": 1000.00000004,
+        "filled_base": 9.619649,
+        "avg_price": 103.9538968667152,
+        "mid_price": 103.945,
+        "impact_bps": 0.8559206037043159,
+        "levels_swept": 2,
+        "fully_filled": true
+      },
+      {
+        "venue": "kraken",
+        "side": "buy",
+        "target_usd": 10000.0,
+        "filled_usd": 10000.0000001852,
+        "filled_base": 96.19140737,
+        "avg_price": 103.95938965442336,
+        "mid_price": 103.945,
+        "impact_bps": 1.3843527272469451,
+        "levels_swept": 2,
+        "fully_filled": true
+      },
+      {
+        "venue": "kraken",
+        "side": "buy",
+        "target_usd": 100000.0,
+        "filled_usd": 100000.0000008046,
+        "filled_base": 961.71053554,
+        "avg_price": 103.98139180689608,
+        "mid_price": 103.945,
+        "impact_bps": 3.501063725632916,
+        "levels_swept": 5,
+        "fully_filled": true
+      },
+      {
+        "venue": "kraken",
+        "side": "buy",
+        "target_usd": 1000000.0,
+        "filled_usd": 1000000.000000581,
+        "filled_base": 9610.7108137,
+        "avg_price": 104.05057642303504,
+        "mid_price": 103.945,
+        "impact_bps": 10.156950602246017,
+        "levels_swept": 19,
+        "fully_filled": true
+      }
+    ],
+    "sell": [
+      {
+        "venue": "kraken",
+        "side": "sell",
+        "target_usd": 1000.0,
+        "filled_usd": 1000.0000005304,
+        "filled_base": 9.62093516,
+        "avg_price": 103.94,
+        "mid_price": 103.945,
+        "impact_bps": 0.4810236182592191,
+        "levels_swept": 1,
+        "fully_filled": true
+      },
+      {
+        "venue": "kraken",
+        "side": "sell",
+        "target_usd": 10000.0,
+        "filled_usd": 10000.000000106998,
+        "filled_base": 96.20935155,
+        "avg_price": 103.93999999999998,
+        "mid_price": 103.945,
+        "impact_bps": 0.48102361826058626,
+        "levels_swept": 1,
+        "fully_filled": true
+      },
+      {
+        "venue": "kraken",
+        "side": "sell",
+        "target_usd": 100000.0,
+        "filled_usd": 100000.000000895,
+        "filled_base": 962.33696305,
+        "avg_price": 103.91370573978391,
+        "mid_price": 103.945,
+        "impact_bps": 3.0106556559801767,
+        "levels_swept": 5,
+        "fully_filled": true
+      },
+      {
+        "venue": "kraken",
+        "side": "sell",
+        "target_usd": 1000000.0,
+        "filled_usd": 1000000.0000005321,
+        "filled_base": 9630.36537786,
+        "avg_price": 103.83822012605154,
+        "mid_price": 103.945,
+        "impact_bps": 10.272728264799122,
+        "levels_swept": 18,
+        "fully_filled": true
+      }
+    ]
+  },
+  "coinbase": {
+    "buy": [
+      {
+        "venue": "coinbase",
+        "side": "buy",
+        "target_usd": 1000.0,
+        "filled_usd": 1000.0000007092,
+        "filled_base": 9.61908427,
+        "avg_price": 103.96,
+        "mid_price": 103.955,
+        "impact_bps": 0.4809773459665675,
+        "levels_swept": 1,
+        "fully_filled": true
+      },
+      {
+        "venue": "coinbase",
+        "side": "buy",
+        "target_usd": 10000.0,
+        "filled_usd": 10000.0000006738,
+        "filled_base": 96.19069117,
+        "avg_price": 103.96016370233345,
+        "mid_price": 103.955,
+        "impact_bps": 0.4967247687410776,
+        "levels_swept": 2,
+        "fully_filled": true
+      },
+      {
+        "venue": "coinbase",
+        "side": "buy",
+        "target_usd": 100000.0,
+        "filled_usd": 100000.0000009927,
+        "filled_base": 961.6714704,
+        "avg_price": 103.98561575233012,
+        "mid_price": 103.955,
+        "impact_bps": 2.945096660104942,
+        "levels_swept": 6,
+        "fully_filled": true
+      },
+      {
+        "venue": "coinbase",
+        "side": "buy",
+        "target_usd": 1000000.0,
+        "filled_usd": 1000000.0000009179,
+        "filled_base": 9603.06936302,
+        "avg_price": 104.13337259145186,
+        "mid_price": 103.955,
+        "impact_bps": 17.158635125954618,
+        "levels_swept": 30,
+        "fully_filled": true
+      }
+    ],
+    "sell": [
+      {
+        "venue": "coinbase",
+        "side": "sell",
+        "target_usd": 1000.0,
+        "filled_usd": 1000.0000010385,
+        "filled_base": 9.62000963,
+        "avg_price": 103.95,
+        "mid_price": 103.955,
+        "impact_bps": 0.4809773459665675,
+        "levels_swept": 1,
+        "fully_filled": true
+      },
+      {
+        "venue": "coinbase",
+        "side": "sell",
+        "target_usd": 10000.0,
+        "filled_usd": 10000.0000008311,
+        "filled_base": 96.21572669,
+        "avg_price": 103.93311306633234,
+        "mid_price": 103.955,
+        "impact_bps": 2.105423853365306,
+        "levels_swept": 2,
+        "fully_filled": true
+      },
+      {
+        "venue": "coinbase",
+        "side": "sell",
+        "target_usd": 100000.0,
+        "filled_usd": 100000.0000000214,
+        "filled_base": 962.38827803,
+        "avg_price": 103.90816501289946,
+        "mid_price": 103.955,
+        "impact_bps": 4.505313558803202,
+        "levels_swept": 6,
+        "fully_filled": true
+      },
+      {
+        "venue": "coinbase",
+        "side": "sell",
+        "target_usd": 1000000.0,
+        "filled_usd": 1000000.000000498,
+        "filled_base": 9634.51488843,
+        "avg_price": 103.7934978128882,
+        "mid_price": 103.955,
+        "impact_bps": 15.535778664979386,
+        "levels_swept": 25,
+        "fully_filled": true
+      }
+    ]
+  }
+}

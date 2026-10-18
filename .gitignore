@@ -7,3 +7,5 @@ data/*.json
 !data/.gitkeep
 *.png
 !docs/*.png
+data/*.sqlite
+data/*.sqlite-*
