@@ -160,8 +160,8 @@ EXPLAIN: dict[str, str] = {
     "color": "Red-black colour (0 = black, 1 = red): the rule that keeps the tree balanced.",
     "price_in_ticks": "The order's price in ticks.",
     "node_order_sequence_number": "The order's sequence number. For bids Phoenix stores it "
-    "bit-flipped (NOT seq, so the top bit is set): walking the tree from its largest key down "
-    "then meets the highest price first and, within a price, the oldest bid first.",
+    "bit-flipped (NOT seq, so the top bit is set). The bids tree is kept in reverse key order, "
+    "so its first node is the highest price and, within a price, the oldest bid.",
     "trader_index": "Which seat placed this order (an index into the traders tree).",
     "num_base_lots": "The order's remaining size, in base lots.",
     "last_valid_slot": "The slot after which the order expires (0 = never).",
