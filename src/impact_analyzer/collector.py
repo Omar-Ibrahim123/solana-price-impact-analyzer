@@ -21,6 +21,7 @@ stop after the current tick (pressing it twice quits immediately).
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import math
@@ -29,6 +30,7 @@ import signal
 import socket
 import statistics
 import subprocess
+import sys
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -387,9 +389,40 @@ def _size(path: Path) -> str:
     return f"{n / 1e6:.1f} MB"
 
 
-def run_collector(store: Store, config: CollectConfig, resume: bool = False) -> int:
+class KeepAwake:
+    """Ask Windows not to idle-sleep while the collector runs (like a video player does).
+
+    This is a request held by this process only (``SetThreadExecutionState``); it
+    changes no settings and ends when the process exits. It does not stop sleep from
+    closing the lid. On other systems it does nothing.
+    """
+
+    ES_CONTINUOUS = 0x80000000
+    ES_SYSTEM_REQUIRED = 0x00000001
+
+    def __enter__(self) -> KeepAwake:
+        self.active = False
+        if sys.platform == "win32":
+            import ctypes
+
+            flags = self.ES_CONTINUOUS | self.ES_SYSTEM_REQUIRED
+            self.active = bool(ctypes.windll.kernel32.SetThreadExecutionState(flags))
+            if self.active:
+                log.info("asked Windows not to sleep while collecting (closing the lid still does)")
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        if self.active:
+            import ctypes
+
+            ctypes.windll.kernel32.SetThreadExecutionState(self.ES_CONTINUOUS)  # back to normal
+
+
+def run_collector(
+    store: Store, config: CollectConfig, resume: bool = False, keep_awake: bool = True
+) -> int:
     """Entry point for the CLI: start or resume a run, with Ctrl+C handled gracefully."""
-    with Http() as http:
+    with Http() as http, KeepAwake() if keep_awake else contextlib.nullcontext():
         collector = Collector(store, config, http)
         if resume:
             run = store.latest_run()

@@ -281,6 +281,11 @@ def add_collect_parsers(sub: argparse._SubParsersAction) -> None:
         help="max Jupiter requests per second (default %(default)s; the free tier allows 0.5)",
     )
     p.add_argument("--log", help="also append the log to this file")
+    p.add_argument(
+        "--allow-sleep",
+        action="store_true",
+        help="don't ask Windows to stay awake while collecting",
+    )
 
     p = sub.add_parser("status", help="progress and health of the newest collector run")
     p.add_argument("--db", default="data/collect.sqlite")
@@ -320,7 +325,7 @@ def cmd_collect_or_status(args: argparse.Namespace) -> None:
         jupiter_rps=args.jupiter_rps,
     )
     with Store(args.db) as store:
-        run_collector(store, config, resume=args.resume)
+        run_collector(store, config, resume=args.resume, keep_awake=not args.allow_sleep)
 
 
 if __name__ == "__main__":
