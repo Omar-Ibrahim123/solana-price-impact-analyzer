@@ -231,7 +231,7 @@
 
   /* ------------------------------------------------------------------ small DOM helpers */
   const S = {
-    card: "background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-lg); padding: clamp(12px, 3vw, 20px); min-width: 0; display: grid; gap: var(--s-3); align-content: start;",
+    card: "background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-lg); padding: clamp(12px, 3vw, 20px); min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-3); align-content: start;",
     head: "display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: var(--s-1) var(--s-3);",
     h2: "font-size: var(--fs-md); margin: 0;",
     grid: (min) => `display: grid; gap: var(--s-4); align-items: start; grid-template-columns: repeat(auto-fit, minmax(min(100%, ${min}px), 1fr));`,
@@ -1011,7 +1011,7 @@ Everything runs through this course's [[matching-engine|matching engine]], a Jav
       ro.observe(el);
       offs.push(() => ro.disconnect());
     }
-    ctx.onData(() => { mountStart(); renderCompare(); });
+    ctx.onData(() => { curveCache.clear(); mountStart(); renderCompare(); });
 
     sim.newRandom();
     mountStart();
