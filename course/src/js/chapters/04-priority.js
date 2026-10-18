@@ -95,8 +95,8 @@
         const justHit = nFills > 0 && fills[nFills - 1].makerOrderId === o.id;
         cards[o.id].set({
           x, y,
-          size: left > 0 ? `${left} SOL` : `filled ${got} ✓`,
-          note: got && left ? `${got} filled, keeps place` : `arrived ${o.time}`,
+          size: left > 0 ? (got ? `${left} SOL left` : `${left} SOL`) : `filled ${got} ✓`,
+          note: got && left ? "kept its place" : `arrived ${o.time}`,
           mode: left === 0 ? "ghost" : justHit ? "hit" : "normal",
         });
         const rank = order.indexOf(o.id) + 1;
@@ -142,17 +142,17 @@
   ];
   // Guesses asked BEFORE moving to step `at`. answer() reads the engine, so it can't drift.
   const QUESTIONS = {
-    5: { q: "Dave is about to post 3 SOL. Where will he join the queue?", options: [["front", "At the front"], ["gap", "In Bob's old spot (2nd)"], ["back", "At the back, behind Carol"]],
+    5: { q: "Dave is about to post 3 SOL. Where will he join the queue?", options: [["front", "At the front"], ["gap", "In Bob's old spot"], ["back", "At the back"]],
       answer: (b) => { const pos = b.queuePosition(4), n = b.level(ASK, PRICE).count; return pos === 1 ? "front" : pos === n ? "back" : "gap"; },
       why: "New orders always join the back of the queue. Bob's old position isn't kept for anyone." },
     6: { q: "A buyer wants 7 SOL. Whose order fills first?", options: [["1", "Alice"], ["3", "Carol"], ["4", "Dave"]], answer: (b, f) => String(f[0].makerOrderId),
       why: "Alice is at the head of the queue: she arrived first at this price." },
-    7: { q: "Alice's 4 SOL are gone and the buyer needs 3 more. Who fills next?", options: [["3", "Carol"], ["4", "Dave"], ["both", "Carol and Dave share it"]], answer: (b, f) => String(f[1].makerOrderId),
+    7: { q: "Alice's 4 SOL are gone and the buyer needs 3 more. Who fills next?", options: [["3", "Carol"], ["4", "Dave"], ["both", "They share it"]], answer: (b, f) => String(f[1].makerOrderId),
       why: "Carol is next in line, so she fills before Dave. Time priority never splits an order between people; it goes strictly in order." },
-    8: { q: "The buyer needs 1 more SOL and Dave has 3. What happens to Dave?", options: [["front", "Fills 1, keeps 2, stays at the front"], ["back", "Fills 1, keeps 2, moves to the back"], ["all", "All 3 of his SOL fill"]],
+    8: { q: "The buyer needs 1 more SOL and Dave has 3. Once Dave has sold 1, where are his other 2?", options: [["front", "Still at the front"], ["back", "Moved to the back"], ["all", "None left: all 3 fill"]],
       answer: (b) => (b.queuePosition(4) === 1 ? "front" : "back"),
       why: "The buyer only wanted 1 more, so Dave trades 1. His remaining 2 SOL keep their place at the head of the queue." },
-    9: { q: "Bob posts 4 SOL again. Where does he go?", options: [["old", "Back to his old 2nd place"], ["front", "The front, since he first came before Carol and Dave"], ["back", "The back, behind Dave"]],
+    9: { q: "Bob posts 4 SOL again. Where does he go?", options: [["old", "His old 2nd place"], ["front", "The front"], ["back", "The back, behind Dave"]],
       answer: (b) => (b.queuePosition(5) === b.level(ASK, PRICE).count ? "back" : "front"),
       why: "A cancelled order is gone for good. The new one is timestamped now, so it waits behind everyone already there." },
   };
@@ -226,8 +226,8 @@
         // Bob's two orders share a name; only one is ever on screen.
         cards[id].set({
           x: 4 + k * 108, y: 40,
-          size: isGhost ? st.ghost.note : `${live.sizeLots} SOL`,
-          note: isGhost ? "" : hit ? `filled ${lastFill.sizeLots}, keeps place` : `#${ids.indexOf(id) + 1} in line`,
+          size: isGhost ? st.ghost.note : `${live.sizeLots} SOL${hit ? " left" : ""}`,
+          note: isGhost ? "" : hit ? "kept its place" : `#${ids.indexOf(id) + 1} in line`,
           mode: isGhost ? "ghost" : hit ? "hit" : "normal",
         });
       }
@@ -302,7 +302,7 @@
         ui.prose(`
 In [chapter 3](#/learn/3) a taker traded with "the best resting order". But often several orders wait at exactly the same price. Who goes first?
 
-Almost every order book answers with [[price-time-priority|price-time priority]]:
+Most order books, including the engine in this project, answer with [[price-time-priority|price-time priority]]:
 
 1. **Better price first.** A buyer is matched with the cheapest ask before any pricier one; a seller with the highest bid first.
 2. **Then earlier arrival.** At one price, orders wait in a [[fifo|FIFO]] queue: first in, first out.

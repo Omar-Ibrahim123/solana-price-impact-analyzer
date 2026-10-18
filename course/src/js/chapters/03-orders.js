@@ -123,9 +123,9 @@
     // ---- controls
     const sideSeg = ui.Segmented({ label: "Side", value: BID, options: [{ value: BID, label: "▲ Buy" }, { value: ASK, label: "▼ Sell" }], onChange: (v) => { state.side = v; sync(); } });
     const typeSeg = ui.Segmented({ label: "Order type", value: "limit", options: [{ value: "limit", label: "Limit" }, { value: "market", label: "Market" }], onChange: (v) => { state.type = v; sync(); } });
-    const tifSeg = ui.Segmented({ label: "Time in force", small: true, value: "gtc", options: [{ value: "gtc", label: "GTC: rest the rest" }, { value: "ioc", label: "IOC: cancel the rest" }], onChange: (v) => { state.tif = v; } });
+    const tifSeg = ui.Segmented({ label: "Time in force", small: true, value: "gtc", options: [{ value: "gtc", label: "GTC (rests)" }, { value: "ioc", label: "IOC (cancels)" }], onChange: (v) => { state.tif = v; } });
     const protSeg = ui.Segmented({ label: "Price protection", small: true, value: "off", options: [{ value: "off", label: "No limit" }, { value: "on", label: "Stop 10% from the mid" }], onChange: (v) => { state.protect = v === "on"; } });
-    const guessSeg = ui.Segmented({ label: "Your prediction", small: true, value: null, options: [{ value: "maker", label: "Maker" }, { value: "taker", label: "Taker" }, { value: "both", label: "Both" }, { value: "none", label: "Nothing trades" }], onChange: (v) => { state.guess = v; } });
+    const guessSeg = ui.Segmented({ label: "Your prediction", small: true, value: null, options: [{ value: "maker", label: "Maker" }, { value: "taker", label: "Taker" }, { value: "both", label: "Both" }, { value: "none", label: "Nothing" }], onChange: (v) => { state.guess = v; } });
 
     const priceId = OBZ.util.uid("px"), sizeId = OBZ.util.uid("sz");
     const priceIn = h("input", { type: "number", id: priceId, class: "input mono", inputMode: "decimal", autocomplete: "off", step: "0.001", min: "0" });
@@ -228,6 +228,9 @@
       quickButtons();
       renderMine();
       explain({ side, opp, lots, ticks, fills, rested, id, protLimit, before });
+      // On a phone the result sits below the ladder: bring it into view.
+      const top = result.getBoundingClientRect().top;
+      if (top > window.innerHeight - 80) result.scrollIntoView({ block: "nearest" });
     }
 
     function explain(r) {
