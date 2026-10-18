@@ -303,7 +303,7 @@ def cmd_collect_or_status(args: argparse.Namespace) -> None:
     if args.command == "status":
         if not Path(args.db).exists():
             sys.exit(f"{args.db} does not exist yet (start one with: collect)")
-        with Store(args.db) as store:
+        with Store(args.db, readonly=True) as store:
             print(format_status(store))
         return
 

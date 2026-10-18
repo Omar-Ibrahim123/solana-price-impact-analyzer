@@ -190,14 +190,31 @@ class StoredSnapshot:
 
 
 class Store:
-    def __init__(self, path: Path | str) -> None:
+    def __init__(self, path: Path | str, readonly: bool = False) -> None:
+        """Open (or create) a collector database.
+
+        ``readonly=True`` is for reading a database another process is writing,
+        e.g. ``status`` or ``report`` while the 24 h collector runs: SQLite itself
+        then refuses any write, so a reader can never damage the live file. The
+        metrics cache is skipped in that mode.
+        """
         self.path = Path(path)
-        if str(path) != ":memory:":
-            self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.readonly = readonly
         # check_same_thread=False: the collector writes only from its main thread,
         # but tests and the report may hand the store around.
-        self.db = sqlite3.connect(str(path), check_same_thread=False)
+        if readonly:
+            if not self.path.exists():
+                raise FileNotFoundError(f"{self.path} does not exist")
+            uri = self.path.resolve().as_uri() + "?mode=ro"
+            self.db = sqlite3.connect(uri, uri=True, check_same_thread=False)
+        else:
+            if str(path) != ":memory:":
+                self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.db = sqlite3.connect(str(path), check_same_thread=False)
         self.db.row_factory = sqlite3.Row
+        if readonly:
+            self._check_version()
+            return
         # WAL: readers (e.g. `status` in another terminal) never block the writer.
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA foreign_keys=ON")
@@ -212,12 +229,15 @@ class Store:
     def __exit__(self, *exc: object) -> None:
         self.close()
 
-    def _migrate(self) -> None:
+    def _check_version(self) -> None:
         version = self.db.execute("PRAGMA user_version").fetchone()[0]
         if version > SCHEMA_VERSION:
             raise RuntimeError(
                 f"{self.path} was written by a newer version (schema {version}); upgrade the code"
             )
+
+    def _migrate(self) -> None:
+        self._check_version()
         with self.db:
             self.db.executescript(SCHEMA)
             self.db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
@@ -400,6 +420,8 @@ class Store:
         return json.loads(row["json"]) if row else None
 
     def cache_metrics(self, snapshot_id: int, version: int, data: dict) -> None:
+        if self.readonly:
+            return  # reading a live database: never write, just recompute next time
         with self.db:
             self.db.execute(
                 "INSERT OR REPLACE INTO metrics (snapshot_id, version, json) VALUES (?, ?, ?)",

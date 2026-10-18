@@ -1171,7 +1171,7 @@ def cmd_twap(args: argparse.Namespace) -> None:
 
     if not Path(args.db).exists():
         sys.exit(f"{args.db} does not exist (collect some data first: collect)")
-    with Store(args.db) as store:
+    with Store(args.db, readonly=True) as store:
         if args.summary:
             print(
                 twap_markdown(

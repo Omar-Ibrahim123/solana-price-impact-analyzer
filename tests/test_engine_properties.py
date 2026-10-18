@@ -23,7 +23,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from hypothesis.stateful import Bundle, RuleBasedStateMachine, invariant, rule
 
-from impact_analyzer.orderbook import Fill, Order, OrderBook, PriceLevel, Side
+from impact_analyzer.orderbook import Fill, Order, OrderBook, PriceLevel, Side, TimeInForce
 
 BID, ASK = Side.BID, Side.ASK
 
@@ -251,6 +251,25 @@ class EngineMachine(RuleBasedStateMachine):
 
         # The taker's lots were never "added" to the book, so only the maker side is counted.
         self.maker_lots_traded += filled(fills)
+
+    @rule(side=sides, price=prices, size=market_sizes)
+    def ioc_limit_order(self, side: Side, price: int, size: int) -> None:
+        # An IOC limit order must trade exactly like a market order with the same limit,
+        # and never rest: its id is used once and then forgotten.
+        order_id = self.next_id
+        self.next_id += 1
+        self.snapshot()
+        ids_before = set(self.book.orders)
+        lots_before = resting_lots(self.book)
+
+        fills = self.book.add_order(order_id, side, price, size, tif=TimeInForce.IOC)
+
+        assert fills == self.model.market(side, size, price)
+        self.check_fills(fills, side, size, limit=price)
+        assert set(self.book.orders) <= ids_before
+        assert resting_lots(self.book) == lots_before - filled(fills)
+        assert self.book.cancel_order(order_id) is False  # nothing rested, nothing to cancel
+        self.maker_lots_traded += filled(fills)  # like a market order: only the maker side
 
     @rule(order_id=order_ids, size=sizes)
     def reject_duplicate_resting_id(self, order_id: int, size: int) -> None:

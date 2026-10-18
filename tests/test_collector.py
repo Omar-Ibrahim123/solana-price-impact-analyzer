@@ -4,6 +4,7 @@ The fake clock only moves when the collector sleeps, so a "24 hour" schedule run
 milliseconds and every timestamp is predictable.
 """
 
+import sqlite3
 import threading
 
 import pytest
@@ -256,3 +257,19 @@ def test_trimmed_keeps_only_the_band():
     assert all(book.price(o.price_ticks) <= 101.0 for o in trimmed.asks)
     assert len(trimmed.bids) < len(book.bids)
     assert trimmed.best_bid() == book.best_bid()  # top of book untouched
+
+
+def test_readonly_store_reads_but_never_writes(store, tmp_path):
+    clock = FakeClock(T0)
+    collector = make_collector(store, clock)
+    run = collector.start_run()
+    store.insert_tick(run.run_id, collector.collect_tick(T0))
+    with Store(store.path, readonly=True) as reader:
+        assert len(reader.ticks(run.run_id)) == 1
+        snap = next(reader.snapshots(venue="kraken"))
+        reader.cache_metrics(snap.id, 1, {"x": 1})  # silently skipped
+        assert reader.cached_metrics(snap.id, 1) is None
+        with pytest.raises(sqlite3.OperationalError):
+            reader.db.execute("DELETE FROM ticks")
+    with pytest.raises(FileNotFoundError):
+        Store(tmp_path / "missing.sqlite", readonly=True)
