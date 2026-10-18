@@ -2,9 +2,10 @@
 
 import pytest
 
-from impact_analyzer.orderbook import Fill, Order, OrderBook, PriceLevel, Side
+from impact_analyzer.orderbook import Fill, Order, OrderBook, PriceLevel, Side, TimeInForce
 
 BID, ASK = Side.BID, Side.ASK
+GTC, IOC = TimeInForce.GTC, TimeInForce.IOC
 
 
 def filled(fills: list[Fill]) -> int:
@@ -237,3 +238,73 @@ def test_rejects_duplicate_resting_id(book):
     book.add_order(1, BID, 14_990, 1)
     with pytest.raises(ValueError):
         book.add_order(1, BID, 14_980, 1)
+
+
+# ---- time in force: GTC rests the remainder, IOC never does ---------------------
+
+
+def test_ioc_that_cannot_trade_never_rests(book):
+    book.add_order(1, ASK, 15_010, 5)
+    fills = book.add_order(2, BID, 15_000, 5, tif=IOC)  # below the best ask: nothing to hit
+    assert fills == []
+    assert book.best_bid() is None and 2 not in book.orders
+    assert book.depth(ASK) == [(15_010, 5)]  # the book is exactly as before
+
+
+def test_partial_ioc_reports_unfilled_remainder(book):
+    book.add_order(1, ASK, 15_000, 5)
+    book.add_order(2, ASK, 15_010, 5)
+    fills = book.add_order(3, BID, 15_010, 25, tif=IOC)
+    assert fills == [Fill(1, 15_000, 5), Fill(2, 15_010, 5)]
+    assert 25 - filled(fills) == 15  # the unfilled remainder, cancelled
+    assert book.best_ask() is None and book.best_bid() is None  # nothing rested
+    assert book.orders == {}
+
+
+def test_gtc_rests_the_same_remainder(book):
+    book.add_order(1, ASK, 15_000, 5)
+    fills = book.add_order(2, BID, 15_000, 8, tif=GTC)
+    assert filled(fills) == 5
+    assert book.depth(BID) == [(15_000, 3)] and book.orders[2].size_lots == 3
+
+
+def test_default_time_in_force_is_gtc(book):
+    book.add_order(1, BID, 14_990, 4)  # every existing call site relies on this
+    assert book.depth(BID) == [(14_990, 4)]
+
+
+def test_ioc_respects_its_limit_price(book):
+    book.add_order(1, ASK, 15_000, 5)
+    book.add_order(2, ASK, 15_010, 5)
+    book.add_order(3, ASK, 15_020, 5)
+    fills = book.add_order(4, BID, 15_010, 100, tif=IOC)
+    assert {f.price_ticks for f in fills} == {15_000, 15_010}  # never above the limit
+    assert book.depth(ASK) == [(15_020, 5)]
+    sells = book.add_order(5, ASK, 15_030, 1, tif=IOC)  # a sell IOC with no bids at all
+    assert sells == [] and book.best_bid() is None
+
+
+def test_sell_ioc_stops_at_its_limit(book):
+    book.add_order(1, BID, 15_000, 5)
+    book.add_order(2, BID, 14_990, 5)
+    fills = book.add_order(3, ASK, 15_000, 8, tif=IOC)
+    assert fills == [Fill(1, 15_000, 5)]
+    assert book.depth(BID) == [(14_990, 5)] and book.best_ask() is None
+
+
+def test_cancel_of_an_ioc_id_is_a_no_op(book):
+    book.add_order(1, ASK, 15_000, 5)
+    book.add_order(2, BID, 15_000, 8, tif=IOC)  # 5 filled, 3 cancelled
+    assert book.cancel_order(2) is False
+    book.add_order(3, BID, 14_990, 1, tif=IOC)  # crossed nothing, did nothing
+    assert book.cancel_order(3) is False
+    assert book.orders == {}
+
+
+def test_ioc_matches_market_order_with_the_same_limit():
+    a, b = OrderBook(), OrderBook()
+    for bk in (a, b):
+        for oid, (price, size) in enumerate([(15_000, 3), (15_000, 4), (15_010, 6)], start=1):
+            bk.add_order(oid, ASK, price, size)
+    assert a.add_order(99, BID, 15_010, 9, tif=IOC) == b.market_order(BID, 9, limit_price=15_010)
+    assert a.depth(ASK) == b.depth(ASK)
