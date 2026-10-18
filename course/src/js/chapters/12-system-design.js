@@ -27,7 +27,7 @@
     {
       id: "store", name: "Store", modules: "store.py · SQLite",
       what: "Each round is written in **one transaction**: the round row, one row per venue (ok or failed, attempts, latency, error), each book as compressed JSON, Phoenix's raw account bytes, and every Jupiter quote with its route. `store.py` is the only module that writes SQL.",
-      why: "**[[sqlite|SQLite]] over Parquet.** It ships with Python; a round lands completely or not at all, so a crash never leaves half a round; a unique key on (run, round time) makes restarts safe; and `status` and `report` are plain SQL queries. Parquet (a file format that stores data column by column) shines when you scan millions of rows for a few columns, which a day of 5-minute rounds isn't. **Raw bytes are kept** so a decoder bug found later can be fixed and the whole day re-decoded, instead of being baked into the data.",
+      why: "**[[sqlite|SQLite]] over Parquet.** It ships with Python; a round lands completely or not at all, so a crash never leaves half a round; a unique key on (run, round time) makes restarts safe; and `status` and `report` are plain SQL queries. Parquet (a file format that stores data column by column) shines when you scan millions of rows for a few columns, which a day of 5-minute rounds isn't. **Raw bytes are kept** so a decoder bug found later can be fixed and the whole run re-decoded, instead of being baked into the data.",
     },
     {
       id: "engine", name: "Engine", modules: "orderbook.py · convert.py · impact.py",
@@ -358,7 +358,7 @@ The collector's rules:
 - **Retry politely**: wait 1, 2, then 4 seconds with a little randomness ([[exponential-backoff|exponential backoff]]), and if a server says "Retry-After: 2", wait exactly that long.
 - **Write each round in one [[db-transaction|database transaction]]**, so a crash leaves the whole round or none of it.
 - **Resume after a restart**: \`collect --resume\` carries on with the same run and skips rounds already stored. Ctrl+C finishes the current round first.
-- **Protect the run from its author.** The run used its own copy of the code (a pinned git worktree: a separate folder holding the code at one fixed version), so edits made during the day couldn't change it halfway.`),
+- **Protect the run from its author.** The run used its own copy of the code (a pinned git worktree: a separate folder holding the code at one fixed version), so edits made during the run couldn't change it halfway.`),
         ui.Callout({
           kind: "project", open: true, title: "SQLite, not Parquet: the reasoning",
           body: "[[sqlite|SQLite]] is built into Python, survives a crash mid-write, enforces \"one row per venue per round\" with a unique key, and answers `status` and `report` with plain SQL. A day is 288 rounds, an estimated 15 MB. Parquet, a file format that stores data column by column, wins when you scan millions of rows for a few columns. At exchange scale the answer flips: append to a log, then compact it into Parquet files split by day and market.",
@@ -399,7 +399,7 @@ The collector's rules:
         kind: "real", title: "The real run's one gap, and why it stayed",
         body: `The collector run started at 05:09 UTC. The collector began with the 5-minute window it was in, 05:05, and that round took 105 seconds (mostly the paced Jupiter quotes), so it finished at 05:11, already inside the 05:10 window. The pinned code skipped a window it had run into, so 05:10 is missing: it is the break in chapter 11's charts.
 
-The fix, "collect a round late instead of skipping it" (what this simulator does), was committed five minutes after the run started. The run was deliberately left on its pinned commit, so every round of the day is collected by the same code.`,
+The fix, "collect a round late instead of skipping it" (what this simulator does), was committed five minutes after the run started. The run was deliberately left on its pinned commit, so every round of the run is collected by the same code.`,
       }),
       ui.Callout({
         kind: "real", title: "How the project tests itself",

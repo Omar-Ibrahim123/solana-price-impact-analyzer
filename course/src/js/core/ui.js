@@ -577,7 +577,7 @@ self.onmessage = function (e) {
   function CodeExercise(ex) {
     const st = OBZ.store.exercises;
     const taId = uid("code");
-    const ta = h("textarea", { id: taId, class: "code-editor", spellcheck: false, autocapitalize: "off", autocomplete: "off", attrs: { "aria-describedby": taId + "-help", wrap: "off" } });
+    const ta = h("textarea", { id: taId, class: "code-editor", spellcheck: false, autocapitalize: "off", autocomplete: "off", attrs: { "aria-describedby": taId + "-help", "aria-label": "Your code: " + String(ex.title || "exercise").replace(/[*`]/g, ""), wrap: "off" } });
     ta.value = st.code(ex.id, ex.starter);
     const save = OBZ.util.debounce(() => st.saveCode(ex.id, ta.value), 300);
     let escaped = false;
