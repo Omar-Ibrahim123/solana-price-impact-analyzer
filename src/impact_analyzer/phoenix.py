@@ -154,6 +154,15 @@ def decode_order_tree(buf: bytes) -> list[PhoenixOrder]:
     return [order for i, (_, order) in enumerate(nodes) if i not in free]
 
 
+def order_trees_end(header: MarketHeader) -> int:
+    """Byte offset just past the asks tree. The rest of the account (trader seats,
+    ~1.2 MB on SOL/USDC) isn't needed to rebuild the book, so the collector stores
+    only ``data[:order_trees_end(header)]``.
+    """
+    trees = 2 * TREE_PREFIX_SIZE + NODE_SIZE * (header.bids_size + header.asks_size)
+    return HEADER_SIZE + PADDING_SIZE + MARKET_FIELDS_SIZE + trees
+
+
 def decode_market(data: bytes, slot: int = 0, now: int | None = None) -> PhoenixMarket:
     """Decode a raw Phoenix market account. Expired and empty orders are dropped."""
     now = int(time.time()) if now is None else now
@@ -215,7 +224,11 @@ def fetch_account(rpc_url: str, address: str, timeout: float = 15.0) -> tuple[by
     }
     resp = httpx.post(rpc_url, json=payload, timeout=timeout)
     resp.raise_for_status()
-    body = resp.json()
+    return parse_account_response(resp.json(), address)
+
+
+def parse_account_response(body: dict, address: str) -> tuple[bytes, int]:
+    """Pull ``(account bytes, slot)`` out of a ``getAccountInfo`` JSON-RPC response."""
     if "error" in body:
         raise RuntimeError(f"RPC error: {body['error']}")
     value = body["result"]["value"]

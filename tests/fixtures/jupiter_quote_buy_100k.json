@@ -1,0 +1,62 @@
+{
+ "inputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+ "inAmount": "100000000000",
+ "outputMint": "So11111111111111111111111111111111111111112",
+ "outAmount": "964727695557",
+ "otherAmountThreshold": "959904057080",
+ "swapMode": "ExactIn",
+ "slippageBps": 50,
+ "platformFee": null,
+ "priceImpactPct": "0.0000955722591911624969002222",
+ "routePlan": [
+  {
+   "swapInfo": {
+    "ammKey": "FLckHLGMJy5gEoXWwcE68Nprde1D4araK4TGLw4pQq2n",
+    "label": "TesseraV",
+    "inputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "outputMint": "So11111111111111111111111111111111111111112",
+    "inAmount": "14000000000",
+    "outAmount": "135062558039",
+    "updateContextSlot": "458312050"
+   },
+   "percent": 14,
+   "bps": null
+  },
+  {
+   "swapInfo": {
+    "ammKey": "7yD7gfXv49SFxhx9uTc11dEd7Nj98rGWeYMdZJgheZbG",
+    "label": "Kipseli",
+    "inputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "outputMint": "So11111111111111111111111111111111111111112",
+    "inAmount": "35000000000",
+    "outAmount": "337658738605",
+    "updateContextSlot": "458312049"
+   },
+   "percent": 35,
+   "bps": null
+  },
+  {
+   "swapInfo": {
+    "ammKey": "8FnX3xo2yYw3EUE6w3nQA4GfXGS9wpK6oj3veJpbFzLo",
+    "label": "BisonFi",
+    "inputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "outputMint": "So11111111111111111111111111111111111111112",
+    "inAmount": "51000000000",
+    "outAmount": "492006398913",
+    "updateContextSlot": "458312050"
+   },
+   "percent": 51,
+   "bps": null
+  }
+ ],
+ "contextSlot": 458312050,
+ "timeTaken": 0.076467555,
+ "swapUsdValue": "99969.5356104438312943073697",
+ "longtailMarketQuoteReport": null,
+ "useIncurredSlippageForQuoting": null,
+ "useRewards": null,
+ "otherRoutePlans": null,
+ "loadedLongtailToken": false,
+ "instructionVersion": null,
+ "transactionVersion": 0
+}
