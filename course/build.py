@@ -34,6 +34,7 @@ DIST = COURSE / "dist"
 LIVE = REPO / "data" / "live-2026-10-18"
 DATA_DIR = COURSE / "data"
 OUT = DIST / "order-books-from-zero.html"
+ARTIFACT_OUT = DIST / "order-books-from-zero.artifact.html"  # for claude.ai Artifacts
 TESTS_OUT = DIST / "tests.html"
 MAX_BYTES = 2 * 1024 * 1024
 
@@ -307,6 +308,24 @@ def fill(template: str, parts: dict[str, str], name: str) -> str:
     return out
 
 
+def artifact_page(html: str) -> str:
+    """The same page for claude.ai Artifacts, whose host supplies the document skeleton.
+
+    The host wraps the file in its own <!doctype>/<html>/<head>/<body> (with charset and
+    viewport metas), so those tags come out; everything inside <head> (title, fonts,
+    styles) moves to the top of the content. The viewport-fit-sides meta tells the host
+    our side gutters already clear a phone's system bars (the max(...) paddings).
+    """
+    head = re.search(r"<head>(.*?)</head>", html, re.S | re.I)
+    body = re.search(r"<body[^>]*>(.*)</body>", html, re.S | re.I)
+    if not head or not body:
+        raise BuildError("page has no <head> or <body> to unwrap for the artifact build")
+    inner = re.sub(r'<meta (charset|name="viewport")[^>]*>\n?', "", head.group(1), flags=re.I)
+    title_end = inner.index("</title>") + len("</title>")
+    meta = '\n<meta name="claude:viewport-fit-sides" content="cover">'
+    return inner[:title_end].lstrip() + meta + inner[title_end:] + body.group(1)
+
+
 def main() -> None:
     files = js_files()
     css_texts = {f: read(SRC / f) for f in CSS}
@@ -328,6 +347,7 @@ def main() -> None:
     )
     DIST.mkdir(exist_ok=True)
     OUT.write_text(html, encoding="utf-8", newline="\n")
+    ARTIFACT_OUT.write_text(artifact_page(html), encoding="utf-8", newline="\n")
     size = OUT.stat().st_size
     if size > MAX_BYTES:
         raise BuildError(f"{OUT.name} is {size / 1048576:.2f} MB, over the 2 MB limit")
