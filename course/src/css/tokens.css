@@ -1,0 +1,242 @@
+/* =====================================================================
+   Order Books From Zero: design tokens.
+   This is the ONLY file allowed to contain colour values. Everything else
+   uses var(--token). Dark mode is defined twice on purpose: once for the
+   system preference (unless the reader forced light) and once for the
+   manual toggle (data-theme="dark").
+   ===================================================================== */
+:root {
+  color-scheme: light;
+
+  /* ---- surfaces and ink ---- */
+  --bg: #f4f5f8;
+  --panel: #ffffff;
+  --panel-2: #f0f2f7;
+  --panel-3: #e6e9f1;
+  --ink: #161b29;
+  --ink-2: #2e3548;
+  --muted: #586174;
+  --line: #d8dce6;
+  --line-strong: #b9bfcd;
+  --grid: #e7eaf0;
+  --shadow: rgba(22, 27, 41, 0.08);
+  --shadow-strong: rgba(22, 27, 41, 0.18);
+  --scrim: rgba(22, 27, 41, 0.35);
+
+  /* ---- brand ---- */
+  --accent: #3f47c8;          /* indigo */
+  --accent-ink: #ffffff;      /* text on an accent background */
+  --accent-soft: #e6e8fb;
+  --accent-strong: #2e35a3;
+
+  /* ---- market semantics (always paired with a label or shape) ---- */
+  --bid: #0d7d5f;             /* buyers: green, shape ▲ / label BID */
+  --bid-soft: #d6efe6;
+  --ask: #c13d2a;             /* sellers: red, shape ▼ / label ASK */
+  --ask-soft: #f8ddd7;
+  --mine: #a86f00;            /* your own orders: amber */
+  --mine-soft: #fbedc9;
+
+  /* ---- venues (same colour everywhere in the course) ---- */
+  --phoenix: #6d3fd1;         /* violet */
+  --phoenix-soft: #ece4fb;
+  --kraken: #1f66c9;          /* blue */
+  --kraken-soft: #e0ebfa;
+  --coinbase: #0b8597;        /* teal */
+  --coinbase-soft: #d9f0f3;
+  --amm: #b0571a;             /* orange */
+  --amm-soft: #f7e3d4;
+  --amm-alt: #7d8494;         /* grey: theoretical x*y=k line */
+
+  /* ---- feedback ---- */
+  --ok: #0d7d5f;
+  --ok-soft: #d6efe6;
+  --bad: #c13d2a;
+  --bad-soft: #f8ddd7;
+  --warn: #9a5f00;
+  --warn-soft: #fcefd2;
+  --info: #3f47c8;
+  --info-soft: #e6e8fb;
+
+  /* ---- lesson phases: Explain / See / Try / Check ---- */
+  --sec-explain: #3f47c8;
+  --sec-see: #0b8597;
+  --sec-try: #a86f00;
+  --sec-check: #0d7d5f;
+
+  /* ---- code ---- */
+  --code-bg: #1a1e2e;
+  --code-fg: #e8eaf4;
+  --code-muted: #9aa1bd;
+  --code-sel: rgba(142, 156, 255, 0.35);
+
+  /* ---- hex explorer field colours (cycled by field index) ---- */
+  --field-1: #e5e1fb;
+  --field-2: #d9eefa;
+  --field-3: #d8f1e6;
+  --field-4: #fbeccd;
+  --field-5: #f9dfe3;
+  --field-6: #e9e9ee;
+  --field-edge: #3f47c8;
+
+  /* ---- type ---- */
+  --f-display: "Chivo", "Segoe UI", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --fs-xs: 0.75rem;
+  --fs-sm: 0.875rem;
+  --fs-base: 1rem;
+  --fs-md: 1.125rem;
+  --fs-lg: 1.3rem;
+  --fs-xl: 1.6rem;
+  --fs-2xl: 2.1rem;
+  --fs-3xl: 2.9rem;
+  --lh-tight: 1.15;
+  --lh-body: 1.6;
+  --measure: 68ch;
+
+  /* ---- spacing (4 px base) ---- */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 48px;
+  --s-8: 64px;
+  --gutter: 16px;
+
+  /* ---- radii and sizes ---- */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 16px;
+  --r-pill: 999px;
+  --tap: 44px;                /* minimum touch target */
+  --topbar-h: 60px;
+  --content-max: 1120px;
+}
+
+@media (max-width: 760px) {
+  :root { --topbar-h: 100px; } /* the nav wraps onto a second row */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0d1118;
+    --panel: #151b25;
+    --panel-2: #1b2230;
+    --panel-3: #232c3c;
+    --ink: #e6e9f0;
+    --ink-2: #c9cfdb;
+    --muted: #97a2b4;
+    --line: #2a3446;
+    --line-strong: #3d4a60;
+    --grid: #1e2633;
+    --shadow: rgba(0, 0, 0, 0.35);
+    --shadow-strong: rgba(0, 0, 0, 0.6);
+    --scrim: rgba(0, 0, 0, 0.55);
+    --accent: #929dff;
+    --accent-ink: #0d1118;
+    --accent-soft: #232a52;
+    --accent-strong: #b3bbff;
+    --bid: #38c597;
+    --bid-soft: #123a30;
+    --ask: #f2775f;
+    --ask-soft: #46241e;
+    --mine: #f0b93a;
+    --mine-soft: #3d3015;
+    --phoenix: #ab8dff;
+    --phoenix-soft: #2c2347;
+    --kraken: #66a6ff;
+    --kraken-soft: #1a2b46;
+    --coinbase: #3fcbdb;
+    --coinbase-soft: #113438;
+    --amm: #f09a5b;
+    --amm-soft: #3f2a1a;
+    --amm-alt: #8f97a8;
+    --ok: #38c597;
+    --ok-soft: #123a30;
+    --bad: #f2775f;
+    --bad-soft: #46241e;
+    --warn: #f0b93a;
+    --warn-soft: #3d3015;
+    --info: #929dff;
+    --info-soft: #232a52;
+    --sec-explain: #929dff;
+    --sec-see: #3fcbdb;
+    --sec-try: #f0b93a;
+    --sec-check: #38c597;
+    --code-bg: #0a0d14;
+    --code-fg: #e8eaf4;
+    --code-muted: #8b93ad;
+    --code-sel: rgba(146, 157, 255, 0.35);
+    --field-1: #2c2750;
+    --field-2: #1a3247;
+    --field-3: #173a2e;
+    --field-4: #3d3015;
+    --field-5: #44232b;
+    --field-6: #262a33;
+    --field-edge: #929dff;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0d1118;
+  --panel: #151b25;
+  --panel-2: #1b2230;
+  --panel-3: #232c3c;
+  --ink: #e6e9f0;
+  --ink-2: #c9cfdb;
+  --muted: #97a2b4;
+  --line: #2a3446;
+  --line-strong: #3d4a60;
+  --grid: #1e2633;
+  --shadow: rgba(0, 0, 0, 0.35);
+  --shadow-strong: rgba(0, 0, 0, 0.6);
+  --scrim: rgba(0, 0, 0, 0.55);
+  --accent: #929dff;
+  --accent-ink: #0d1118;
+  --accent-soft: #232a52;
+  --accent-strong: #b3bbff;
+  --bid: #38c597;
+  --bid-soft: #123a30;
+  --ask: #f2775f;
+  --ask-soft: #46241e;
+  --mine: #f0b93a;
+  --mine-soft: #3d3015;
+  --phoenix: #ab8dff;
+  --phoenix-soft: #2c2347;
+  --kraken: #66a6ff;
+  --kraken-soft: #1a2b46;
+  --coinbase: #3fcbdb;
+  --coinbase-soft: #113438;
+  --amm: #f09a5b;
+  --amm-soft: #3f2a1a;
+  --amm-alt: #8f97a8;
+  --ok: #38c597;
+  --ok-soft: #123a30;
+  --bad: #f2775f;
+  --bad-soft: #46241e;
+  --warn: #f0b93a;
+  --warn-soft: #3d3015;
+  --info: #929dff;
+  --info-soft: #232a52;
+  --sec-explain: #929dff;
+  --sec-see: #3fcbdb;
+  --sec-try: #f0b93a;
+  --sec-check: #38c597;
+  --code-bg: #0a0d14;
+  --code-fg: #e8eaf4;
+  --code-muted: #8b93ad;
+  --code-sel: rgba(146, 157, 255, 0.35);
+  --field-1: #2c2750;
+  --field-2: #1a3247;
+  --field-3: #173a2e;
+  --field-4: #3d3015;
+  --field-5: #44232b;
+  --field-6: #262a33;
+  --field-edge: #929dff;
+}
