@@ -180,9 +180,12 @@
       out.push({ title: "Half round trip at $100K", text: at(100000) + "." });
     }
 
-    const best = (ds.jupiter || []).filter((q) => q.dex === "best" && q.ok !== false && Array.isArray(q.route));
-    const pools = Array.from(new Set(best.flatMap((q) => q.route)));
-    if (pools.length) out.push({ title: "Pools in Jupiter's best routes (latest tick)", text: pools.join(", ") + "." });
+    const A = OBZ.lessons && OBZ.lessons.amm;
+    const best = (ds.jupiter || []).filter((q) => q.dex === "best" && q.ok !== false && Array.isArray(q.route) && q.route.length);
+    if (best.length && A) {
+      const legs = best.slice().sort((a, b) => a.usd - b.usd || (a.side < b.side ? -1 : 1)).map((q) => `${q.side} ${fmt.usdCompact(q.usd)}: ${A.routeText(q.route)}`);
+      out.push({ title: "Jupiter's best routes (latest round), legs in order", text: legs.join(" · ") + ". A leg can hand an in-between token to the next leg, so these names are venues the route passed through, not SOL liquidity each one held." });
+    }
 
     const solfi = S["jupiter:SolFi"] && S["jupiter:SolFi"].cost_bps_vs_ref;
     if (solfi && solfi.buy) {
@@ -248,7 +251,7 @@
       wrap.appendChild(ui.Figure({
         label: "Figure 11.2",
         children: h("div", { class: "stack" }, h("div", { class: "btn-row" }, viewSeg, metricSeg), chartBox, note),
-        caption: "Median cost of a trade by size, across every tick. **[[half-round-trip|Half round trip]]** = buy $X and sell $X back to back, then take half the gap between the two average prices: it is the cost of one trip, and it barely moves if the price drifts while the quotes are taken. **Buy cost vs reference mid** compares a buy's average price with the Kraken–Coinbase reference. A line that stops means no fill or no route at the next size. Fees are not included for the books; Jupiter's quotes include the pools' own fees.",
+        caption: "Median cost of a trade by size, across every tick. **[[half-round-trip|Half round trip]]** = buy $X and sell $X back to back, then take half the gap between the two average prices: it is the cost of one trip, and it barely depends on the reference mid or on slow drift while the quotes are taken. **Buy cost vs reference mid** compares a buy's average price with the Kraken–Coinbase reference. A line that stops means no fill or no route at the next size. Fees are not included for the books; Jupiter's quotes include the pools' own fees.",
         alt: "Median cost in basis points against trade size, both on log scales, for the selected routes. The exact values for every line are in the table under the chart.",
       }));
 
@@ -430,9 +433,10 @@ One more rule: [[fee|fees]] are always shown separately, never mixed in. A begin
           body: `Say these before an interviewer has to ask:
 
 - **Quotes aren't trades.** A snapshot shows what *could* have traded at that instant. A real order would meet makers who requote, and other takers.
-- **Exchange books are aggregated.** Kraken returns at most 500 price levels and Coinbase's level-2 book is summed by price; the collector keeps them within 25% of the mid. Very large orders can run out of what the API shows.
+- **Exchange books are aggregated.** Kraken's API returns up to 500 price levels per side (the course's teaching snapshot keeps 400) and Coinbase's level-2 book is summed by price; the collector keeps them within 25% of the mid. Very large orders can run out of what the API shows.
 - **Fees are base tier.** Kraken's 40 bps and Coinbase's 120 bps are what a new account pays; large traders pay far less. Jupiter's quotes already include the pools' fees.
-- **One day, one market.** ${ts && ts.t && ts.t.length ? `This export has ${ts.t.length} ticks (${fmt.num((ts.t[ts.t.length - 1] - ts.t[0]) / 3600, 1)} hours).` : "The run covers 24 hours."} Five-minute snapshots miss everything in between, and Phoenix Legacy SOL/USDC is one spot market, not Phoenix's newer perpetuals.`,
+- **Solana's own fees aren't counted.** On-chain routes also pay a transaction fee and, often, a priority fee. At these trade sizes they are small, but they are not in these numbers.
+- **One day at most, one market.** The collector was built to run for 24 hours, with a snapshot every 5 minutes. ${ts && ts.t && ts.t.length > 1 ? `This export holds ${ts.t.length} snapshot rounds covering ${fmt.num((ts.t[ts.t.length - 1] - ts.t[0]) / 3600, 1)} hours.` : ""} Five-minute snapshots miss everything in between, and Phoenix Legacy SOL/USDC is one spot market, not Phoenix Perpetuals.`,
         }));
     },
 

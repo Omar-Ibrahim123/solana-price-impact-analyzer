@@ -1,5 +1,6 @@
-/* chapters/07-integers.js: Chapter 7, "Why blockchains need integers".
- *   Explain  determinism across validators; floating point is approximate; ticks, lots, decimals;
+/* chapters/07-integers.js: Chapter 7, "Why exchanges count in integers".
+ *   Explain  a blockchain primer (validators, transactions, determinism); floating point is
+ *            deterministic but inexact; why exchanges use integers anyway; ticks, lots, decimals;
  *            the real Phoenix header numbers as a worked example; integer keys in orderbook.py
  *   See      a Stepper: a float-keyed book splits one price into two levels; integer ticks don't
  *            (every value shown is computed live by this browser)
@@ -96,7 +97,7 @@
       `Bob's bot computes its ask as the best bid plus 15 cents: 104.2 + 0.15. Your browser just worked it out: **${String(bob)}**. ${same ? "Here it happens to round to the same float as Alice's." : "Two rounding errors added up to a number one step away from Alice's."}`,
       `A book keyed by float prices puts each order under its price key. ${floatMap.size > 1 ? `The two keys are different numbers, so the map has **${floatMap.size} levels** at what a human calls one price: the depth display shows "$104.35" twice, and Bob's order sits in a queue of its own instead of behind Alice.` : "In this browser the two keys happen to match, but a different formula would split them."}`,
       `An integer engine converts each price **once**, at the edge, to a whole number of ticks: round(price ÷ $0.001). Both become **${fmt.int(toTicks(alice))} ticks**, so the real engine (running here) holds **${tickLevels.length} level**, with Alice first and Bob behind her, exactly as price-time priority says.`,
-      `From then on everything is integer arithmetic: sizes are lots (25 SOL = 25,000 lots), level totals are integer sums, and every validator gets the same answer. Dollars appear only for display: multiply integers first, divide once at the end.`,
+      `From then on everything is integer arithmetic: sizes are lots (25 SOL = 25,000 lots), level totals are integer sums, and every sum is exact. Dollars appear only for display: multiply integers first, divide once at the end.`,
     ];
     return ui.Figure({
       label: "Figure 7.1",
@@ -112,11 +113,11 @@
     let ten = 0; for (let i = 0; i < 10; i++) ten += 0.1;
     const rows = [
       { e: "0.1 + 0.2", v: String(0.1 + 0.2), note: "not 0.3" },
-      { e: "0.1 + 0.2 === 0.3", v: String(0.1 + 0.2 === 0.3), note: "equality tests on floats are unsafe" },
+      { e: "0.1 + 0.2 === 0.3", v: String(0.1 + 0.2 === 0.3), note: "=== asks \"exactly equal?\": no" },
       { e: "0.1 added ten times", v: String(ten), note: "errors pile up" },
       { e: "(0.1 + 0.2) + 0.3", v: String((0.1 + 0.2) + 0.3), note: "grouping changes the answer…" },
       { e: "0.1 + (0.2 + 0.3)", v: String(0.1 + (0.2 + 0.3)), note: "…so order matters" },
-      { e: "104.35 ÷ 0.001", v: String(104.35 / 0.001), note: "chopping gives tick 104,349" },
+      { e: "104.35 ÷ 0.001", v: String(104.35 / 0.001), note: "cutting off the decimals gives tick 104,349" },
       { e: "104,350 × 0.001", v: String(104350 * 0.001), note: "multiply by a rounded tick size: off" },
       { e: "104,350 × 1,000 ÷ 10^6", v: String(104350 * 1000 / 1e6), note: "integers first, one division: exact" },
       { e: "100,000 + 200,000 atoms", v: String(100000 + 200000), note: "= $0.30 exactly, in USDC atoms" },
@@ -306,11 +307,11 @@ On the real market \`tickAtoms\` = 1,000 with \`quoteDecimals\` = 6, and \`lotAt
   OBZ.chapters.register({
     id: "integers",
     number: 7,
-    title: "Why blockchains need integers",
-    summary: "Thousands of validators must compute the very same fills, so on-chain exchanges count in whole ticks and lots instead of decimals. Learn why, and convert them yourself.",
+    title: "Why exchanges count in integers",
+    summary: "Money has to add up to the last cent, and about a thousand validators must agree on every fill, so on-chain exchanges count in whole ticks and lots instead of decimals. Learn why, and convert them yourself.",
     goals: [
-      "Explain why every validator must get bit-for-bit the same result",
-      "Show, with live examples, how floating point rounds and why order matters",
+      "Explain what a validator and a transaction are, and why every validator must get bit-for-bit the same result",
+      "Show, with live examples, how floating point rounds, and why that matters for money and for price keys",
       "Convert ticks and lots to dollars and SOL with Phoenix's real header numbers",
       "Say why the engine keys price levels by integer ticks, not float prices",
     ],
@@ -321,19 +322,28 @@ On the real market \`tickAtoms\` = 1,000 with \`quoteDecimals\` = 6, and \`lotAt
       const { ui } = ctx;
 
       // ---------------- Explain
-      const ex = ctx.section("explain", "Same answer on every computer");
+      const ex = ctx.section("explain", "Exact answers, on every computer");
       ex.append(
         ui.prose(`
-A [[program]] on [[solana|Solana]], like Phoenix, doesn't run on one computer. Every [[validator]] re-runs every [[transaction]] and must reach exactly the same result, or they can't agree on who owns what (that agreement is called [[consensus]]). So the matching engine has to be deterministic: same inputs, same fills, to the last digit. That property is [[determinism]].`),
+**A quick primer.** A [[blockchain]] is a shared computer that many independent machines run together, so no single company controls it. Each of those machines is a [[validator]]; [[solana|Solana]], the blockchain [[phoenix|Phoenix]] lives on, has about a thousand. To do something on it, such as place an order, you send a [[transaction]]: a signed request that every validator runs. They must all reach exactly the same result, or they can't agree on who owns what (that agreement is called [[consensus]]). [Chapter 8](#/learn/8) looks at how Solana stores its data; this chapter is about the arithmetic.
+
+So a [[program]] like Phoenix must be deterministic: same program, same bytes, same order of transactions, same result, to the last digit. That property is [[determinism]].`),
         ui.prose(`
-The usual way computers store decimals, [[floating-point|floating point]], is fast but approximate. In binary, 0.1 never ends, like 1/3 = 0.333… in decimal, so the computer stores the nearest number it can. That is why 0.1 + 0.2 gives 0.30000000000000004 in JavaScript, Python and most other languages. The basic operations follow a standard (IEEE 754), but the answer still depends on the order you add things in, and compilers and maths libraries may legitimately differ in the last digit of the same formula. Solana programs can use floats, but they are emulated in software, cost extra compute, and keep all of these [[rounding-error|rounding errors]].`),
+The usual way computers store decimals, [[floating-point|floating point]], is fast but approximate. In binary, 0.1 never ends, like 1/3 = 0.333… in decimal, so the computer stores the nearest number it can. That is why 0.1 + 0.2 gives 0.30000000000000004. Surprisingly, it is the *same* wrong answer on every computer: a standard called IEEE 754 fixes the result of each basic step (add, subtract, multiply, divide), and Solana even runs floats in software so every validator gets the same bits. Floats are allowed on Solana; they are slow and inexact. Machines can disagree only when the order of the steps isn't pinned down, for example when a compiler takes shortcuts or a big sum is split across threads. That risk is why some blockchains ban floats outright.
+
+So why do exchanges avoid them? Four reasons:
+
+- **Money must be exact.** Every smallest unit of a token has to be accounted for. [[rounding-error|Rounding errors]] of a millionth of a cent per trade add up, and somebody would have to own them.
+- **Token amounts are whole numbers anyway.** SOL has 9 [[decimals]] (1 SOL = 1,000,000,000 [[lamport|lamports]]) and USDC has 6. Balances on Solana are whole numbers of these smallest units, called **atoms**.
+- **A price must be a reliable key.** A price typed as 104.35 and one computed as 104.2 + 0.15 should be the same price. As floats they aren't, as the figure below shows.
+- **Integer maths is cheap.** Every step a Solana program takes costs compute, and software floats cost more.`),
         ui.prose(`
-[[integer|Integers]] have none of these problems: 3 + 4 is 7 on every machine. So exchanges count in whole units. A price is a whole number of [[tick|ticks]] and a size a whole number of [[lot|lots]]; the market's [[tick-size|tick size]] and [[lot-size|lot size]] say what one of each is worth. Tokens work the same way: SOL has 9 [[decimals]] (1 SOL = 1,000,000,000 [[lamport|lamports]]) and USDC has 6.`),
+[[integer|Integers]] avoid all of this: 3 + 4 is exactly 7. So exchanges count in whole units. A price is a whole number of [[tick|ticks]] and a size a whole number of [[lot|lots]]; the market's [[tick-size|tick size]] and [[lot-size|lot size]] say what one of each is worth. In a pair like SOL/USDC, SOL is the **base** token (the thing being bought and sold) and USDC the **quote** token (the money prices are counted in).`),
         h("p", { class: "formula" }, "price in $ = ticks × tick size"),
         h("p", { class: "formula" }, "size in SOL = lots × lot size"),
         ui.Callout({
           kind: "tip", title: "Worked example: the real Phoenix header",
-          body: `Phoenix's SOL/USDC market account starts with a 576-byte header ([chapter 8](#/learn/8) shows the bytes). Three of its numbers define the units:
+          body: `Phoenix's SOL/USDC market account starts with a 576-byte header ([chapter 8](#/learn/8) shows the bytes). Three of its numbers define the units. (A *quote atom* is USDC's smallest unit, a millionth of a dollar; a *base unit* is one whole SOL.)
 
 - \`tick_size_in_quote_atoms_per_base_unit\` = **1,000**, with \`quote_decimals\` = 6: one tick is 1,000 ÷ 10⁶ = **$0.001** per SOL.
 - \`base_lot_size\` = **1,000,000** lamports, with \`base_decimals\` = 9: one lot is 1,000,000 ÷ 10⁹ = **0.001 SOL**.
@@ -376,12 +386,12 @@ A neat consequence: one lot at one tick is 0.001 SOL × $0.001 = $0.000001, exac
 
     quiz: [
       {
-        q: "Why does an on-chain matching engine like Phoenix store prices as integers rather than floats?",
+        q: "Why does an on-chain matching engine like Phoenix store prices and sizes as integers rather than floats?",
         options: [
-          { text: "Integers take less space", why: "A 64-bit integer and a 64-bit float take the same 8 bytes. Space isn't the reason." },
-          { text: "Every validator must compute exactly the same fills, and integer arithmetic is exact and identical everywhere", why: "Thousands of validators re-run each transaction and must agree to the last digit. Integers guarantee that; floats round, and the rounding can depend on the order of operations and on the software doing it." },
-          { text: "Floats can't store numbers as big as prices", why: "Floats can store numbers up to about 10³⁰⁸. The trouble is precision, not size: most decimals like 0.1 or 104.35 can't be stored exactly." },
-          { text: "To make trades faster for users", why: "Integer maths is cheap, but speed isn't the main reason. An engine whose results could differ between validators would be broken however fast it was." },
+          { text: "Floats give different answers on different validators, so they could never agree", why: "Not quite. IEEE 754 fixes the result of each basic float step, and Solana runs floats in software so every validator gets the same bits. Disagreement is a risk only where the order of steps isn't pinned down. The bigger problem is that floats are inexact." },
+          { text: "Money must be exact to the last atom and a price must equal itself; floats round, integers don't", why: "Right. 0.1 + 0.2 is 0.30000000000000004 on every computer: consistent, but wrong for money. Token balances are whole numbers of atoms anyway, integer prices make reliable keys, and integer maths costs less compute." },
+          { text: "Floats can't store numbers as large as the prices and sizes a market needs", why: "Floats can store numbers up to about 10³⁰⁸. The trouble is precision, not size: most decimals like 0.1 or 104.35 can't be stored exactly." },
+          { text: "Integers take up less space in the account than floats of the same precision", why: "A 64-bit integer and a 64-bit float take the same 8 bytes. Space isn't the reason." },
         ],
         answer: 1,
       },
@@ -398,10 +408,10 @@ A neat consequence: one lot at one tick is 0.001 SOL × $0.001 = $0.000001, exac
       {
         q: "An engine keys its price levels by float prices. Alice's ask is 104.35; Bob's bot sends 104.2 + 0.15, which a computer evaluates as 104.35000000000001. What happens?",
         options: [
-          { text: "They join one level, Alice first", why: "That's what should happen, and what an integer-keyed engine does. With float keys, 104.35 and 104.35000000000001 are different numbers, so they're different keys." },
-          { text: "They end up in two separate levels: the book shows $104.35 twice and time priority between them is lost", why: "A map treats the two floats as different keys, so the engine makes two levels at what a human calls one price. The depth display splits and Bob's order may be matched in the wrong order. Integer ticks avoid this: both round to 104,350." },
-          { text: "The program crashes", why: "Nothing crashes, which is what makes it dangerous: the book quietly fragments." },
-          { text: "Bob's order is rejected as a duplicate price", why: "Engines happily accept many orders at one price; they join the same queue. The problem is that these two prices don't compare equal." },
+          { text: "They join one level, with Alice's order first in the queue", why: "That's what should happen, and what an integer-keyed engine does. With float keys, 104.35 and 104.35000000000001 are different numbers, so they're different keys." },
+          { text: "They form two levels, so the queue splits and time priority is lost", why: "A map treats the two floats as different keys, so the engine makes two levels at what a human calls one price. The depth display splits and Bob's order may be matched in the wrong order. Integer ticks avoid this: both round to 104,350." },
+          { text: "The program crashes when the two keys collide", why: "Nothing crashes, which is what makes it dangerous: the book quietly fragments." },
+          { text: "Bob's order is rejected as a duplicate of Alice's price", why: "Engines happily accept many orders at one price; they join the same queue. The problem is that these two prices don't compare equal." },
         ],
         answer: 1,
       },

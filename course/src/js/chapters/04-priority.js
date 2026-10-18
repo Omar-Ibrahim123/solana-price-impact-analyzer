@@ -318,10 +318,10 @@ Why this rule? Two reasons.
 
 First, it rewards showing your hand early. A [[market-maker|market maker]] who posts a good price first is first to trade at it, so there is a reason to quote early and openly instead of waiting to see what others do.
 
-Second, it is completely **deterministic**: the same orders arriving in the same sequence always produce exactly the same fills, with no randomness and no judgment calls. On a blockchain that is essential. On [[solana|Solana]], every [[validator]] re-runs each transaction, and they must all reach exactly the same result. [[determinism|Determinism]] is the subject of [chapter 7](#/learn/7).`),
+Second, it is simple and cheap. A taker only ever touches the front of each queue: fill the oldest order, then the next, and stop. Nothing has to be shared out or recalculated across everyone at the price. That matters wherever every step costs something, as on [[solana|Solana]], where a program pays in compute for each step it takes. (Any fixed rule, pro-rata included, gives the same fills every time it runs on the same orders; that property, [[determinism]], is the subject of [chapter 7](#/learn/7).)`),
         ui.Callout({
           kind: "note", title: "The alternative: pro-rata",
-          body: `Not every exchange uses time priority. Under [[pro-rata|pro-rata matching]], an incoming order is shared among all orders at the best price in proportion to their size. If Alice rests 6 SOL and Bob 2 SOL, a buyer of 4 SOL gets 3 from Alice and 1 from Bob, whoever came first. Some futures exchanges use it. It rewards posting big orders rather than posting early, which can tempt traders to show more size than they really want to trade. The engine in this project uses price-time priority.`,
+          body: `Not every exchange uses time priority. Under [[pro-rata|pro-rata matching]], an incoming order is shared among all orders at the best price in proportion to their size. If Alice rests 6 SOL and Bob 2 SOL, a buyer of 4 SOL gets 3 from Alice and 1 from Bob, whoever came first. Some futures exchanges (markets for contracts to buy or sell something at a set price on a later date) use it. It rewards posting big orders rather than posting early, which can tempt traders to show more size than they really want to trade. The engine in this project uses price-time priority.`,
         }),
         ui.Callout({
           kind: "project", title: "How the engine keeps the queue",

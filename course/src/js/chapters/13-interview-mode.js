@@ -19,7 +19,7 @@
     return [
       { k: "S", word: "Situation", text: `**Situation.** On-chain exchanges compete on price impact: how much a big trade moves the price. I wanted a like-for-like measurement of what trading SOL costs on Phoenix compared with Kraken and Coinbase.` },
       { k: "T", word: "Task", text: `**Task.** Measure the cost of $1,000 to $1,000,000 trades on every venue with one engine and one method, so any difference comes from the books, not from my code.` },
-      { k: "A", word: "Action", text: `**Action.** I decoded Phoenix's market account byte by byte, built a price-time priority matching engine tested against a naive model with Hypothesis, and ran a collector every 5 minutes for 24 hours, with real Jupiter quotes for the AMM routes.` },
+      { k: "A", word: "Action", text: `**Action.** I decoded Phoenix's market account byte by byte, built a price-time priority matching engine tested against a naive model with Hypothesis, and built a collector designed to run for 24 hours, snapshotting every venue every 5 minutes, with real Jupiter quotes for the AMM routes.` },
       { k: "R", word: "Result", text: `**Result.** On ${F.snapshotWhen || "18 Oct 2026"} Phoenix's spread was ${F.phoenixSpread || "57.7 bps"} against ${F.cexSpread || "about 1 bps"} on the exchanges; Jupiter's prop-AMM routes were cheapest of all. Along the way I found junk quotes that made price protection necessary, and a decoder bug in bid ordering that only real bytes revealed.` },
     ];
   }
@@ -70,7 +70,7 @@
       q: "**Action.** Which sentence describes what *you* did best?",
       options: [
         { text: "We used various data structures and testing approaches.", why: "\"We\" and \"various\" hide your contribution. Say I, and name the specific choices." },
-        { text: "I decoded Phoenix's account, built a price-time priority engine tested against a naive model with Hypothesis, and ran a 5-minute collector for 24 hours.", why: "Right. Three concrete actions, each one a door the interviewer can open with a follow-up question." },
+        { text: "I decoded Phoenix's account, built a price-time priority engine tested against a naive model with Hypothesis, and built a 5-minute collector for a 24-hour run.", why: "Right. Three concrete actions, each one a door the interviewer can open with a follow-up question." },
         { text: "I spent a lot of late nights debugging.", why: "Effort isn't an action. Say what you built or decided; save the debugging story for \"what was the hardest bug?\"." },
       ],
       answer: 1,
@@ -141,12 +141,12 @@ For technical questions, use **claim → reason → evidence**. The claim answer
 The same pattern works for [[price-impact|price impact]] ("…and on 18 Oct Phoenix's $1K buy cost ${F.phoenix1kBuy || "28.8 bps"}, almost all half the spread"), for [[determinism]], for [[sqlite|SQLite]] versus Parquet.`),
         ui.Callout({
           kind: "tip", title: "Three honesty habits",
-          body: `- **Say the limits before they ask.** Quotes aren't trades; one day of data; base-tier fees; Phoenix Legacy spot, not perpetuals. Saying it first shows you understand your own result.
+          body: `- **Say the limits before they ask.** Quotes aren't trades; at most a day of data; base-tier fees; Phoenix Legacy spot, not Phoenix Perpetuals. Saying it first shows you understand your own result.
 - **Date your numbers.** "On 18 Oct at 04:31 UTC" is stronger than "Phoenix's spread is", because books change by the minute.
 - **"I don't know, but here's how I'd find out."** Then reason out loud from what you do know. Interviewers are testing how you think, not whether you've memorised Phoenix's codebase.`,
         }),
         ui.prose(`
-"What would you do differently?" is not a trap. Pick one or two specific changes and say why: start collecting on day one, anchor on a [[reference-mid|reference mid]] from the start, handle the tick that overran before the 24-hour run began. A specific regret shows judgement; "nothing" shows the opposite.
+"What would you do differently?" is not a trap. Pick one or two specific changes and say why: start collecting on day one, anchor on a [[reference-mid|reference mid]] from the start, handle the collector round that overran before the long run began. A specific regret shows judgement; "nothing" shows the opposite.
 
 Finally, connect to who you're talking to. [[ellipsis-labs|Ellipsis Labs]] builds [[phoenix|Phoenix]] and [[solfi|SolFi]]. Your project decoded one and measured the other's routes; that is a natural bridge to "and that's why I'd like to work on it".`));
 
@@ -156,7 +156,7 @@ Finally, connect to who you're talking to. [[ellipsis-labs|Ellipsis Labs]] build
         label: "Figure 13.1",
         children: buildStar(ctx),
         caption: "Step through the project's STAR story. Said at a calm pace (about 150 words a minute), the four beats take about a minute.",
-        alt: "Four boxes, S, T, A and R. Situation: on-chain exchanges compete on price impact; I wanted a like-for-like measurement of Phoenix against Kraken and Coinbase. Task: measure $1K to $1M trades with one engine and one method. Action: decoded Phoenix's account, built and property-tested a matching engine, ran a 24-hour collector with Jupiter quotes. Result: Phoenix's spread was 57.7 bps against about 1 bps on the exchanges; Jupiter's prop-AMM routes were cheapest; junk quotes and a decoder bug were found and fixed.",
+        alt: "Four boxes, S, T, A and R. Situation: on-chain exchanges compete on price impact; I wanted a like-for-like measurement of Phoenix against Kraken and Coinbase. Task: measure $1K to $1M trades with one engine and one method. Action: decoded Phoenix's account, built and property-tested a matching engine, built a collector designed to run for 24 hours, with Jupiter quotes. Result: Phoenix's spread was 57.7 bps against about 1 bps on the exchanges; Jupiter's prop-AMM routes were cheapest; junk quotes and a decoder bug were found and fixed.",
       }));
 
       // ---------------- Try
@@ -189,7 +189,7 @@ Finally, connect to who you're talking to. [[ellipsis-labs|Ellipsis Labs]] build
         answer: 1,
       },
       {
-        q: "You're asked how Phoenix's **perpetuals** engine handles liquidations, which your project never touched. What do you do?",
+        q: "You're asked how **Phoenix Perpetuals** handles liquidations, which your project never touched. What do you do?",
         options: [
           { text: "Make up a plausible answer so you don't look unprepared", why: "Interviewers at Ellipsis know the real answer. A confident wrong answer costs far more trust than an honest \"I don't know\"." },
           { text: "Say your project measured Phoenix Legacy's spot market, then reason out loud about what a liquidation engine would need, and how you'd find out", why: "Right. State the boundary of what you know, then show how you think. That's what the question is really testing." },

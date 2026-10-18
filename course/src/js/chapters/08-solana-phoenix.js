@@ -62,10 +62,15 @@
   };
 
   /* ------------------------------------------------------------------ field explanations */
+  // Phoenix's MarketStatus enum (0..5).
+  const STATUS_NAMES = {
+    0: "uninitialized", 1: "active, fully working (placing resting orders still needs a trader seat)",
+    2: "post-only: new orders may rest but may not take", 3: "paused", 4: "closed", 5: "tombstoned (shut down for good)",
+  };
   // Plain-English meaning of each field. `d` is the decoded account (tick, lot, values).
   const HEADER_FIELDS = [
     ["discriminant", 0, 8, "bytes", () => "A fixed 8-byte tag at the very start. The program checks it first, so nobody can trick it into treating some other account as a market."],
-    ["status", 8, 8, "u64", (d, v) => `The market's state. ${v === "1" ? "1 means active: anyone can trade." : "1 would mean active."} Other values mean post-only, paused or closed.`],
+    ["status", 8, 8, "u64", (d, v) => `The market's state, as a number: 0 uninitialized, 1 active, 2 post-only, 3 paused, 4 closed, 5 tombstoned. ${STATUS_NAMES[v] ? `Here it is ${v}: ${STATUS_NAMES[v]}.` : `Here it is ${v}.`}`],
     ["bids_size", 16, 8, "u64", (d, v) => `Room for ${v} bids. The whole bids tree, ${v} slots of 64 bytes, was set aside when the market was created, before a single order arrived.`],
     ["asks_size", 24, 8, "u64", (d, v) => `Room for ${v} asks, set aside up front in the same way.`],
     ["num_seats", 32, 8, "u64", (d, v) => `Room for ${v} trader seats: the size of the traders tree, which holds every trader's balances. Like bids_size it is a capacity. Together the three sizes fix the account's length exactly.`],
@@ -88,7 +93,7 @@
   ];
   const MARKET_FIELDS = [
     ["base_lots_per_base_unit", (d, v) => `Lots per whole SOL (${v}). Divide a size in lots by this to get SOL.`],
-    ["quote_lots_per_base_unit_per_tick", (d, v) => `Quote lots per whole SOL per tick (${v}): the link between ticks and dollars. One tick is ${v} millionths of a dollar, $${d.tick}.`],
+    ["tick_size_in_quote_lots_per_base_unit", (d, v) => `The tick size again, counted in quote lots per whole SOL: ${v}. Its type in Phoenix's source is \`QuoteLotsPerBaseUnitPerTick\`, "quote lots per base unit, per tick" (\`phoenix.py\` calls the field \`quote_lots_per_base_unit_per_tick\`). It links ticks to dollars: one tick is ${v} quote lots of ${fmt.num(d.quoteLotUsd, 6)} dollars each, $${d.tick}.`],
     ["order_sequence_number", () => "The number the *next* new order will get. Each order takes the next number, so a smaller number means an older order: that is how time priority is kept."],
     ["taker_fee_bps", (d, v) => `The [[taker-fee|taker fee]] in basis points: ${v} bps = ${(Number(v) / 100).toFixed(2)}% of each trade.`],
     ["collected_quote_lot_fees", (d, v) => `A running total of the fees this market has collected, in quote lots: about ${fmt.usd(Number(v) * d.quoteLotUsd, 0)}.`],
@@ -418,7 +423,8 @@
           h("li", null, ui.rich(`Sequence number as stored: \`${bigStr(n.stored)}\``)),
           h("li", null, ui.rich(`Un-flipped: ${U64_MAX.replace(/\B(?=(\d{3})+(?!\d))/g, ",")} − stored = **${bigStr(n.seq)}**.${flipNote}`)),
           h("li", null, ui.rich(`Expires: ${n.lastSlot === big(0) && n.lastTs === big(0) ? "never (both expiry fields are 0)" : "see the expiry fields"}`))),
-        ui.p(`**Why flip?** Phoenix keeps each side sorted by its key, (price, sequence number). For asks you read from the small end: lowest price first and, at one price, the smallest number, the oldest order. For bids you want the *highest* price first, so you read from the large end. At one price the plain numbers would then give you the *newest* bid first. Storing [[bitwise-not|NOT seq]] turns older (smaller) numbers into larger stored values, so reading bids from the top gives the highest price and, at that price, the oldest bid. That is why every stored bid number is enormous, around 18.4 quintillion, and its last four stored bytes are \`ff ff ff ff\`.`));
+        ui.p(`**Why flip?** Each tree is sorted by its key, (price, sequence number), and the tree's first node is the order that fills first. The asks tree uses normal order: lowest price first and, at one price, the smallest sequence number, which is the oldest order. The bids tree is kept in *reverse* key order, so its first node is the highest price, the best bid. But reversing the whole key also reverses the sequence numbers: at one price the *newest* bid would come first. So Phoenix stores [[bitwise-not|NOT seq]] for bids.`),
+        ui.p(`A small version of the trick: store 10 − n instead of n. Orders 3 and 7 are stored as 7 and 3, so their order flips. With 64-bit numbers, NOT seq = 18,446,744,073,709,551,615 − seq. An older bid (smaller real number) gets a *larger* stored value, and in the reversed tree a larger value comes first, so at one price the oldest bid is first again. A side effect: every stored bid number is enormous, about 18.4 quintillion, with its top bit set, so its last four stored bytes are \`ff ff ff ff\`. A decoder that sorts the raw numbers itself, as \`phoenix.py\` does, sorts bids by price from high to low, then by the un-flipped number from low to high.`));
     }
     const firstLive = dec.nodes.find((n) => n.status === "live");
     if (firstLive) showNode(firstLive.k, false);
@@ -485,14 +491,14 @@
 
 Programs are the code. They hold no data of their own. To do anything, you send a [[transaction]] that names a program, lists every account it will read or write, and asks for an [[instruction]] such as "place a bid". The program reads those accounts, changes their bytes, and either all of it happens or none of it does.
 
-Time on Solana is counted in [[slot|slots]] of about 400 milliseconds. In each slot one [[validator]] packs transactions into a block, and every other validator runs the same programs on the same bytes and must get exactly the same bytes out. That is the [[determinism]] from [chapter 7](#/learn/7), and it is why prices and sizes are stored as whole numbers.`),
+Time on Solana is counted in [[slot|slots]] of about 400 milliseconds. In each slot one [[validator]] packs transactions into a block, and every other validator runs the same programs on the same bytes, in the same order, and must get exactly the same bytes out. That is the [[determinism]] from [chapter 7](#/learn/7).`),
         ui.prose(`
-[[phoenix|Phoenix]], built by [[ellipsis-labs|Ellipsis Labs]], keeps an entire market in **one account**. On SOL/USDC that account is 1,723,488 bytes (about 1.7 MB): a [[header]], the bids and the asks, each a [[red-black-tree|red-black tree]] with room for 4,096 orders, and a tree of [[seat|trader seats]] holding every trader's balances. All of that space is reserved when the market is created, so the account doesn't grow as orders arrive.
+[[phoenix|Phoenix]], built by [[ellipsis-labs|Ellipsis Labs]], keeps an entire market in **one account**. On SOL/USDC that account is 1,723,488 bytes (about 1.7 MB): a [[header]], the bids and the asks, each a [[red-black-tree|red-black tree]] with room for 4,096 orders, and a tree of [[seat|trader seats]] holding every trader's balances. All of that space is reserved when the market is created, so the account doesn't grow as orders arrive. Solana does let a program grow its own account, but only by up to 10 KiB per instruction (10 MiB at most), and a bigger account must hold more [[rent]]. Allocating the whole market up front avoids all that, and a fixed layout lets the program work on the bytes in place.
 
 Because the book and the balances sit in the same place, one transaction can do the whole trade. A taker's order is matched against the book, the makers' seats are credited, and the taker's tokens move in and out of the market's [[vault|vaults]], all at once. Nothing is left over for later, which is why Phoenix is called [[crankless]]. Older Solana order books such as Serum matched first and left the results in a queue; someone had to send separate "crank" transactions to finish settling.`),
         ui.Callout({
           kind: "real", title: "One account, one queue",
-          body: "Solana runs transactions in parallel when they touch different accounts, because each transaction declares its accounts up front. Every trade on this market writes the same account, so those transactions run one after another, in the order the block puts them. For an order book that is a feature: everyone agrees on who came first.",
+          body: "Each transaction declares its accounts up front, so Solana can run two transactions side by side when neither writes an account the other uses. Every trade on this market writes the same account, so those transactions run one after another, in the order the slot's leader (the validator building that block) put them in the block. For an order book that gives one sequence everyone agrees on. But \"first\" means first in that order, which the leader and the [[priority-fee|priority fees]] people pay decide; it is not simply whoever sent their order first by the clock.",
         }),
         ui.prose(`
 To see the book, this project asks any Solana [[rpc|RPC]] node for the account's bytes with one call, \`getAccountInfo\`. The answer is the bytes (in [[base64]]) and the slot they were read at. Then \`phoenix.py\` [[decoding|decodes]] them with no Phoenix library at all: it knows each field's [[offset]] and size, and reads it with Python's \`struct\` module.
@@ -559,7 +565,7 @@ Most fields are [[u64]] numbers: 8 bytes each, stored [[little-endian|little-end
         q: "Two bids rest at the same price. Bid A has sequence number 500, bid B has 900. Phoenix stores NOT seq for bids. Which stored value is larger, and which bid fills first?",
         options: [
           { text: "B's stored value is larger, and B fills first", why: "Flipping reverses the order: NOT 500 is larger than NOT 900. And B is newer (900 > 500), so it waits behind A." },
-          { text: "A's stored value is larger, and A fills first", why: "Right. NOT n = 18,446,744,073,709,551,615 − n, so the smaller real number (A, the older bid) becomes the larger stored value. Reading bids from the large end gives A first, as time priority requires." },
+          { text: "A's stored value is larger, and A fills first", why: "Right. NOT n = 18,446,744,073,709,551,615 − n, so the smaller real number (A, the older bid) becomes the larger stored value. The bids tree is kept in reverse order, larger keys first, so A comes first, as time priority requires." },
           { text: "A's stored value is smaller, and A fills first", why: "That would be true of the plain numbers. The bit flip turns A's 500 into the larger stored value." },
           { text: "They tie at the same price, so either could fill first", why: "A price tie is broken by time: the older order (A, sequence 500) fills first. The stored key keeps that order." },
         ],

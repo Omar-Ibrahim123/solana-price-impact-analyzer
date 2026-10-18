@@ -6,7 +6,8 @@
  *   Try      (1) AMM vs a real book of equal depth (amm.equivalentPool, the project's idea)
  *            (2) the real Jupiter quotes from the collector: cost by route and size
  *            + a NumberCheck and the constant-product swap code exercise
- * Exposes OBZ.lessons.amm = {curveExplorer, ammVsBook, jupiterRoutes, quoteContext} for play/amm-lab.js.
+ * Exposes OBZ.lessons.amm = {curveExplorer, ammVsBook, jupiterRoutes, quoteContext, routeText,
+ * routeLabels, quoteNotes} for play/amm-lab.js, chapter 11 and the Real books page.
  */
 (function (OBZ) {
   "use strict";
@@ -14,6 +15,33 @@
 
   const bpsText = (v) => (v === null || v === undefined || !isFinite(v) ? "–" : Math.abs(v) >= 1000 ? fmt.int(v) + " bps" : fmt.bps(v));
   const signedBps = (v) => (v === null || v === undefined || !isFinite(v) ? "–" : (v < 0 ? "−" : "") + (Math.abs(v) >= 100 ? fmt.int(Math.abs(v)) : Math.abs(v).toFixed(1)));
+
+  /* ------------------------------------------------------------------ Jupiter route helpers */
+  const SOL_MINT = "So11111111111111111111111111111111111111112";
+  const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  /** A route leg's label; legs are strings, or objects {label, input_mint, output_mint} in richer exports. */
+  const legLabel = (leg) => String(typeof leg === "string" ? leg : (leg && leg.label) || "?").replace(/[^\w .()+-]/g, "");
+  /** true / false when the leg says which tokens it swaps; null when the export only has labels. */
+  function legDirect(leg) {
+    if (!leg || typeof leg !== "object") return null;
+    const a = leg.input_mint || leg.inputMint, b = leg.output_mint || leg.outputMint;
+    if (!a || !b) return null;
+    const pair = [a, b].sort().join("|");
+    return pair === [SOL_MINT, USDC_MINT].sort().join("|");
+  }
+  /** "A → B → C", marking legs that swap through another token when the data says so. */
+  function routeText(route) {
+    if (!Array.isArray(route) || !route.length) return "–";
+    return route.map((leg) => legLabel(leg) + (legDirect(leg) === false ? " (via another token)" : "")).join(" → ");
+  }
+  /** Labels used by the best routes of the latest round, most used first: [[label, count]]. */
+  function routeLabels(ds) {
+    const best = ((ds && ds.jupiter) || []).filter((q) => q.dex === "best" && q.ok !== false && Array.isArray(q.route));
+    const n = new Map();
+    for (const q of best) for (const l of new Set(q.route.map(legLabel))) n.set(l, (n.get(l) || 0) + 1);
+    return Array.from(n).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }
+  const listWords = (xs) => (xs.length < 2 ? xs.join("") : xs.slice(0, -1).join(", ") + " and " + xs[xs.length - 1]);
 
   /* ------------------------------------------------------------------ the curve (See) */
   /**
@@ -157,7 +185,7 @@
       chartBox.appendChild(ui.LineChart({
         series: [
           { name: `${label} book`, color: data.colorVar(venue), points: bookPts },
-          { name: "x·y = k pool of equal depth", color: "--amm", points: poolPts },
+          { name: "x·y = k pool of equal depth (no fee)", color: "--amm", points: poolPts },
         ],
         x: { log: true, label: `Trade size (${side === "buy" ? "buying" : "selling"} SOL)`, format: fmt.usdCompact, ticks: [1e3, 1e4, 1e5, 1e6] },
         y: { label: "Impact (bps)", format: (v) => fmt.num(v, 1), min: 0 },
@@ -169,7 +197,7 @@
       const partial = bookPts.some((p) => p[2] === false);
       note.append(
         ui.p(`At **$10K** the ${label} book costs ${bpsText(b10)} and the pool ${bpsText(p10)}. At **$1M**: book ${b1m === null ? "no fill" : bpsText(b1m)}${partial ? " (hollow markers are partial fills: the book ran out within 10% of the mid)" : ""}, pool ${bpsText(p1m)}.`),
-        ui.p(`Small trades: the pool has no [[spread]], so its first dollar costs nothing extra, while the book always charges at least half the spread. Big trades: the pool's price keeps sliding along the curve, while the book's cost depends on where its makers actually put their orders.`));
+        ui.p(`Small trades: this pool has no fee, so it has no [[spread]] either and its first dollar trades at the spot price, while the book always charges at least half the spread. (A real pool charges a fee, which works like a half-spread: buying and selling at the same moment differ by about twice the fee.) Big trades: the pool's price keeps sliding along the curve, while the book's cost depends on where its makers actually put their orders.`));
       checkBox.appendChild(ui.NumberCheck({
         question: `Your turn: this pool holds x = ${fmt.usd(x, 0)} on its dollar side. With no fee, what is its impact for a **$10,000 buy**, in bps?`,
         answer: 1e4 / x * 1e4, tolerance: Math.max(0.01, 1e4 / x * 1e4 * 0.02), unit: "bps",
@@ -211,6 +239,39 @@
     return { slots: slots.length ? [Math.min(...slots), Math.max(...slots)] : null, refMid, t };
   }
 
+  /** Bullet points about the latest Jupiter round, computed from the data. Returns markdown or null. */
+  function quoteNotes(ds) {
+    const q = (ds.jupiter || []);
+    if (!q.length) return null;
+    const out = [];
+    const best = q.filter((x) => x.dex === "best" && x.ok !== false && typeof x.cost_bps_vs_ref === "number");
+    if (best.length) {
+      const labels = routeLabels(ds).map(([l]) => l);
+      const worst = Math.max(...best.map((x) => x.cost_bps_vs_ref));
+      out.push(`Jupiter's **best route** used ${labels.length} venue label${labels.length === 1 ? "" : "s"} in this round (${labels.length > 3 ? `${labels.slice(0, 3).join(", ")} and ${labels.length - 3} more` : listWords(labels)}). Most are prop AMMs run by market makers. Its cost was at most ${signedBps(worst)} bps at every size, buying or selling.`);
+    }
+    const ts = ds.timeseries, S = ts && ts.series && ts.series.phoenix;
+    const pb = q.find((x) => x.dex === "Phoenix" && x.side === "buy" && x.usd === 1000 && x.ok !== false);
+    const ps = q.find((x) => x.dex === "Phoenix" && x.side === "sell" && x.usd === 1000 && x.ok !== false);
+    const ph = (ds.venues || []).find((v) => v.venue === "phoenix");
+    const fee = ph && isFinite(ph.feeBps) ? ph.feeBps : null;
+    if (pb && ps && S && S.mid && S.spread_bps && fee !== null) {
+      const i = ts.t.length - 1, mid = S.mid[i], spr = S.spread_bps[i];
+      if (isFinite(mid) && isFinite(spr) && spr > 50) {
+        const ask = mid * (1 + spr / 2e4), bid = mid * (1 - spr / 2e4);
+        const dBuy = Math.abs(pb.avg_price / (ask * (1 + fee / 1e4)) - 1) * 1e4, dSell = Math.abs(ps.avg_price / (bid * (1 - fee / 1e4)) - 1) * 1e4;
+        out.push(`**Phoenix via Jupiter** was expensive here because Phoenix's SOL/USDC book was very wide at that moment: the collector's own decode in the same round shows a best ask of $${fmt.price(ask, 2)} and a best bid of $${fmt.price(bid, 2)}. Jupiter's Phoenix-only quote for $1K ($${fmt.price(pb.avg_price, 2)} to buy, $${fmt.price(ps.avg_price, 2)} to sell) is within about ${fmt.num(Math.max(dBuy, dSell), 1)} bps of that book plus the ${fee} bps taker fee: a useful check that our decoder and Jupiter read the same bytes.`);
+      }
+    }
+    const junk = q.filter((x) => x.dex === "Phoenix" && x.ok !== false && typeof x.avg_price === "number" && typeof x.ref_mid === "number"
+      && (x.side === "buy" ? x.avg_price > 2 * x.ref_mid : x.avg_price < x.ref_mid / 2));
+    if (junk.length) out.push(`At ${listWords(Array.from(new Set(junk.map((x) => x.usd))).sort((a, b) => a - b).map(fmt.usdCompact))}, the Phoenix-only quotes averaged absurd prices (${junk.map((x) => `$${fmt.price(x.avg_price, 2)} to ${x.side}`).join(", ")}): they ran past the real orders into the book's [[junk-quote|junk quotes]] ([chapter 11](#/learn/11) tells that story).`);
+    const sOk = Array.from(new Set(q.filter((x) => x.dex === "SolFi" && x.ok !== false).map((x) => x.usd))).sort((a, b) => a - b);
+    const sNo = Array.from(new Set(q.filter((x) => x.dex === "SolFi" && x.ok === false).map((x) => x.usd))).sort((a, b) => a - b);
+    if (sOk.length && sNo.length) out.push(`**SolFi** quoted ${listWords(sOk.map(fmt.usdCompact))} but had no route at ${listWords(sNo.map(fmt.usdCompact))} in this round.`);
+    return out.length ? out.map((x) => "- " + x).join("\n") : null;
+  }
+
   function jupiterRoutes(ctx) {
     const { ui, data } = ctx;
     const wrap = h("div", { class: "stack" });
@@ -228,7 +289,7 @@
       const sizes = Array.from(new Set(quotes.map((q) => q.usd))).sort((a, b) => a - b);
       const get = (d, s) => quotes.find((q) => q.dex === d && q.usd === s) || null;
       const qc = quoteContext(ds);
-      body.appendChild(h("p", { class: "fine" }, ui.rich(`Real quotes recorded by the collector${qc && qc.t ? ` at the ${fmt.date(qc.t)} tick` : ""}${qc && qc.slots ? `, Solana slots ${fmt.int(qc.slots[0])}–${fmt.int(qc.slots[1])} (about ${fmt.num((qc.slots[1] - qc.slots[0]) * 0.4 / 60, 0)} minutes; the quotes are spaced out to respect Jupiter's rate limit)` : ""}. Cost is measured against the [[reference-mid|reference mid]]${qc && qc.refMid ? ` of $${fmt.price(qc.refMid, 4)}` : ""}, the average of Kraken's and Coinbase's mids at the same tick. Negative means the quote beat that mid.`)));
+      body.appendChild(h("p", { class: "fine" }, ui.rich(`Real quotes recorded by the collector${qc && qc.t ? ` in its ${fmt.date(qc.t)} snapshot round, a later moment than the 04:31 books used elsewhere` : ""}${qc && qc.slots ? `, Solana slots ${fmt.int(qc.slots[0])}–${fmt.int(qc.slots[1])} (about ${fmt.num((qc.slots[1] - qc.slots[0]) * 0.4 / 60, 0)} minutes; the quotes are spaced out to respect Jupiter's rate limit)` : ""}. Cost is measured against the [[reference-mid|reference mid]]${qc && qc.refMid ? ` of $${fmt.price(qc.refMid, 4)}` : ""}, the average of Kraken's and Coinbase's mids in the same round. Negative means the quote beat that mid: a route can price SOL a little better than the exchanges' average, because the mid comes from other venues and prop AMMs often quote tightly.`)));
       const cols = [{ key: "label", label: "Route", align: "left", mono: false }].concat(sizes.map((s) => ({
         key: String(s), label: fmt.usdCompact(s),
         value: (r) => r.dex, format: (d) => { const q = get(d, s); return !q ? "–" : q.ok ? signedBps(q.cost_bps_vs_ref) + " bps" : "no route"; },
@@ -258,8 +319,11 @@
       if (off.length) notes.push(`Off the top of the chart (over ${YMAX} bps): ${off.join("; ")}.`);
       const solfiMissing = sizes.filter((s) => { const q = get("SolFi", s); return q && !q.ok; });
       if (solfiMissing.length) notes.push(`Jupiter found **no SolFi route** at ${solfiMissing.map(fmt.usdCompact).join(" and ")} in this tick: SolFi quoted the smaller sizes only.`);
-      const legs = sizes.map((s) => { const q = get("best", s); return q && q.ok && q.route && q.route.length ? `${fmt.usdCompact(s)}: ${q.route.join(" + ")}` : null; }).filter(Boolean);
-      if (legs.length) notes.push(`Pools on the best route: ${legs.join(" · ")}.`);
+      const legs = sizes.map((s) => { const q = get("best", s); return q && q.ok && q.route && q.route.length ? `${fmt.usdCompact(s)}: ${routeText(q.route)}` : null; }).filter(Boolean);
+      if (legs.length) {
+        const known = quotes.some((q) => Array.isArray(q.route) && q.route.some((l) => legDirect(l) !== null));
+        notes.push(`The best route's legs, in Jupiter's order: ${legs.join(" · ")}. Some legs run side by side; others hand an in-between token to the next leg, so a name in the list is not necessarily SOL that venue held.${known ? "" : " This export keeps only the venue labels, not the tokens each leg swaps, so it can't say which legs are which."}`);
+      }
       if (notes.length) body.appendChild(h("div", { class: "readout-panel" }, notes.map((n) => ui.p(n))));
     }
     wrap.append(
@@ -316,7 +380,7 @@ The fee works as in \`amm.py\`: only \`usdIn × (1 − feeBps / 10,000)\` counts
   };
 
   OBZ.lessons = OBZ.lessons || {};
-  OBZ.lessons.amm = { curveExplorer, ammVsBook, jupiterRoutes, quoteContext, SWAP_EX };
+  OBZ.lessons.amm = { curveExplorer, ammVsBook, jupiterRoutes, quoteContext, quoteNotes, routeText, routeLabels, SWAP_EX };
 
   /* ------------------------------------------------------------------ the chapter */
   OBZ.chapters.register({
@@ -337,6 +401,8 @@ The fee works as in \`amm.py\`: only \`usdIn × (1 − feeBps / 10,000)\` counts
       const { ui } = ctx;
 
       // ---------------- Explain
+      const top = routeLabels(ctx.data.active()).map(([l]) => l).filter((l) => !/solfi/i.test(l)).slice(0, 2);
+      const labelsLine = top.length ? ` In our data Jupiter's best routes mostly ran through venues it labels ${listWords(top)} and a few others, mostly prop AMMs run by market makers.` : "";
       const ex = ctx.section("explain", "A pool, a product and a curve");
       ex.append(
         ui.prose(`
@@ -351,9 +417,9 @@ An order book needs people to post orders. An [[amm|AMM]] (automated market make
 
 You paid 10% over the starting price: an impact of 1,000 bps. That is no accident. Work the algebra through and the average price of a buy is always spot × (1 + dx ÷ x), so **the impact of a buy is exactly dx ÷ x**: spend 1% of the pool's dollars and you pay 1% over spot. Double the pool and the impact halves.`),
         ui.prose(`
-That is the big difference from a book. A pool quotes every price from almost zero to almost infinity, so its money is spread thinly over all of them. To push this curve's price up 2% you only need to add about 1% of x, because the price grows with x². An order book's [[market-maker|market makers]] instead put their size exactly where they choose, usually close to the mid. So an x·y = k pool needs roughly a hundred times more money than a book to be as deep within 2% of the price. [[concentrated-liquidity|Concentrated-liquidity]] AMMs fix part of this: on Orca **Whirlpool** and **Raydium CLMM** each provider picks a price range, and inside it the pool acts like a much bigger x·y = k pool; **Meteora DLMM** splits prices into fixed bins, a little like the levels of a book.
+That is the big difference from a book. A pool quotes every price from almost zero to almost infinity, so its money is spread thinly over all of them. To push this curve's price up 2% you only need to add about 1% of x, because the price grows with x². An order book's [[market-maker|market makers]] instead put their size exactly where they choose, usually close to the mid. So only about 1% of an x·y = k pool's dollars sit within 2% of its price. To be as deep there as a book, the pool needs about 100× the book's depth within 2% of the price. [[concentrated-liquidity|Concentrated-liquidity]] AMMs fix part of this: on Orca **Whirlpool** and **Raydium CLMM** each provider picks a price range, and inside it the pool acts like a much bigger x·y = k pool; **Meteora DLMM** splits prices into fixed bins, a little like the levels of a book.
 
-Two newer ideas matter on Solana. A [[prop-amm|prop AMM]] belongs to one market-making firm: there is no public curve and no outside depositors, and the firm's own program prices every trade from parameters the firm keeps updating on-chain. To a trader it looks like any pool: send USDC, get SOL. [[solfi|SolFi]], from [[ellipsis-labs|Ellipsis Labs]], is one; Kipseli, BisonFi, TesseraV and GoonFi show up in our data too. And an [[aggregator]] such as [[jupiter|Jupiter]] asks all of these venues, AMMs, prop AMMs and books like [[phoenix|Phoenix]], for a price, then splits your trade into a [[route]] across the cheapest ones.`),
+Two newer ideas matter on Solana. A [[prop-amm|prop AMM]] belongs to one market-making firm: there is no public curve and no outside depositors, and the firm's own program prices every trade from parameters the firm updates on-chain frequently, often every slot. To a trader it looks like any pool: send USDC, get SOL. [[solfi|SolFi]], from [[ellipsis-labs|Ellipsis Labs]], is one.${labelsLine} And an [[aggregator]] such as [[jupiter|Jupiter]] asks all of these venues, AMMs, prop AMMs and books like [[phoenix|Phoenix]], for a price, then splits your trade into a [[route]] across the cheapest ones.`),
         ui.Callout({
           kind: "project", title: "In this project: amm.py and jupiter.py",
           body: "`amm.py` (ported to this page as `amm.js`) prices trades on an x·y = k pool and builds `equivalent_pool`: a pool as deep as a real book within ±2% of its mid. `jupiter.py` asks Jupiter's public quote API how much SOL each route would give for $1K to $1M, both with no filter (the best route) and restricted to one venue at a time: SolFi, Phoenix, Whirlpool, Raydium CLMM and Meteora DLMM.",
@@ -383,16 +449,15 @@ Two newer ideas matter on Solana. A [[prop-amm|prop AMM]] belongs to one market-
           intro: "Real quotes the collector recorded for buying and selling SOL with USDC, by route and size. Compare the best route with each single venue, and look at which pools the best route used.",
           children: jupiterRoutes(ctx),
         }));
-      if (ctx.data.active().source === "builtin" && (ctx.data.active().jupiter || []).length) {
-        tr.append(ui.Callout({
-          kind: "real", title: "Reading these quotes carefully",
-          body: `They come from one 5-minute tick, so treat them as a snapshot, not a ranking.
-
-- Jupiter's **best route** mostly ran through prop AMMs (Kipseli, BisonFi, TesseraV, GoonFi V2), with Manifest (another on-chain order book), JupLend AMM and Whirlpool on some legs. It cost under 11 bps at every size, buying or selling.
-- **Phoenix via Jupiter** was expensive here because Phoenix's SOL/USDC book was very wide at that moment: the collector's own decode at the same tick shows a best ask of $104.10 and a best bid of $89.04. Jupiter's Phoenix-only quote for $1K ($104.12 to buy, $89.01 to sell) is within about half a basis point of that book plus the 2 bps taker fee: a useful check that our decoder and Jupiter read the same bytes.
-- **SolFi** quoted $1K and $10K but had no route at $100K or $1M in this tick.`,
-        }));
-      }
+      const notesBox = h("div");
+      const drawNotes = () => {
+        clear(notesBox);
+        const notes = quoteNotes(ctx.data.active());
+        if (notes) notesBox.appendChild(ui.Callout({ kind: "real", title: "Reading these quotes carefully", body: `They come from one 5-minute snapshot round, so treat them as a snapshot, not a ranking.\n\n${notes}` }));
+      };
+      drawNotes();
+      ctx.onData(drawNotes);
+      tr.append(notesBox);
       tr.append(ui.CodeExercise(SWAP_EX));
     },
 
@@ -410,20 +475,20 @@ Two newer ideas matter on Solana. A [[prop-amm|prop AMM]] belongs to one market-
       {
         q: "Why does an x·y = k pool need far more money than an order book to be equally deep within 2% of the price?",
         options: [
-          { text: "It spreads its money over every price from near zero to near infinity, so only about 1% of its dollars sit within 2% of the price", why: "Right. Moving the price up 2% takes x × (√1.02 − 1) ≈ 0.99% of x. A book's makers put their size right where they want it, near the mid." },
-          { text: "AMMs charge higher fees, which eats into their depth", why: "Fees change the cost of a trade, not how much money sits near the price. Even with no fee the pool's money is spread over all prices." },
-          { text: "Pools can only trade in whole SOL", why: "Pools trade any amount; the formula works with fractions. The issue is where along the curve the money is." },
-          { text: "Liquidity providers take their money out whenever the price moves", why: "They can withdraw, but that isn't why. Even a pool that never changes keeps most of its money far from the current price." },
+          { text: "Its money is spread over every price, so only about 1% of it sits within 2% of the price", why: "Right. Moving the price up 2% takes x × (√1.02 − 1) ≈ 0.99% of x. A book's makers put their size right where they want it, near the mid." },
+          { text: "AMMs charge higher fees, and the fees eat into the pool's depth", why: "Fees change the cost of a trade, not how much money sits near the price. Even with no fee the pool's money is spread over all prices." },
+          { text: "Pools can only trade in whole SOL, so small amounts of depth are lost", why: "Pools trade any amount; the formula works with fractions. The issue is where along the curve the money is." },
+          { text: "Liquidity providers pull their money out whenever the price moves", why: "They can withdraw, but that isn't why. Even a pool that never changes keeps most of its money far from the current price." },
         ],
         answer: 0,
       },
       {
-        q: "In the recorded quotes, Jupiter's best $100K buy split across Manifest, BisonFi and Kipseli, and it found no SolFi route at that size. What is the fairest conclusion?",
+        q: "Suppose that in one snapshot round Jupiter's best $1K buy uses a single pool, its best $100K buy splits across three venues, and a SolFi-only quote finds no route at $100K. What is the fairest conclusion?",
         options: [
-          { text: "SolFi is broken", why: "SolFi quoted $1K and $10K in the same tick. One tick with no route at larger sizes doesn't say anything is broken." },
-          { text: "Prop AMMs always beat order books", why: "One tick is a snapshot. Manifest, an order book, was part of the best $100K route, and the answer can change from minute to minute." },
-          { text: "An aggregator compares venues for each trade and splits it; which venues win depends on the size and the moment", why: "Right. The best route changed with size (one pool at $1K, three at $100K), and a venue that is cheapest at one size may have no route at another." },
-          { text: "Jupiter always sends the whole trade to a single pool", why: "The recorded routes show splits across up to three pools. Splitting is exactly what an aggregator is for." },
+          { text: "SolFi is broken, since it couldn't quote the larger size", why: "A venue can quote small sizes and have no route for big ones. One round with no route at $100K doesn't say anything is broken." },
+          { text: "Prop AMMs always beat order books, so books no longer matter", why: "One round is a snapshot. An order book can be part of a best route, and the winners can change from minute to minute." },
+          { text: "Jupiter compares venues for each trade; which win depends on size and moment", why: "Right. The best route changes with size (one pool for a small trade, a split for a big one), and a venue that is cheapest at one size may have no route at another." },
+          { text: "Jupiter always sends the whole trade to the single cheapest pool", why: "The $100K route in the question is split across three venues. Splitting is exactly what an aggregator is for." },
         ],
         answer: 2,
       },

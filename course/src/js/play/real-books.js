@@ -393,7 +393,7 @@
             { label: "Size", value: (q) => fmt.usdCompact(q.usd) },
             { label: "Cost (bps)", value: (q) => (typeof q.cost_bps_vs_ref === "number" ? fmt.num(q.cost_bps_vs_ref, 2) : "–") },
             { label: "Avg price", value: (q) => (typeof q.avg_price === "number" ? "$" + fmt.price(q.avg_price, 3) : "–") },
-            { label: "Route", align: "left", mono: false, value: (q) => (q.ok === false ? (/NO_ROUTES/.test(String(q.error || "")) ? "no route found" : "quote failed") : Array.isArray(q.route) && q.route.length ? q.route.join(" → ") : "–") },
+            { label: "Route", align: "left", mono: false, value: (q) => (q.ok === false ? (/NO_ROUTES/.test(String(q.error || "")) ? "no route found" : "quote failed") : Array.isArray(q.route) && q.route.length ? OBZ.lessons.amm.routeText(q.route) : "–") },
           ],
           rows: jq,
         }))

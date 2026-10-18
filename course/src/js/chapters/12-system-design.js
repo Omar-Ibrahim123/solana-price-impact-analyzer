@@ -42,7 +42,7 @@
     {
       id: "report", name: "Report", modules: "report.py · charts.py · export.py",
       what: "`report` writes `REPORT.md`, with findings sentences generated from the numbers, plus PNG charts. `export` writes the JSON file this course loads: books, time series, Jupiter quotes and a slice of real Phoenix bytes.",
-      why: "**Read-only access**: both open the database with SQLite's `mode=ro`, so they can run while the collector is still writing, with no chance of touching its data. Because the sentences are generated from the numbers, re-running after the full 24-hour run updates the text as well as the charts.",
+      why: "**Read-only access**: both open the database with SQLite's `mode=ro`, so they can run while the collector is still writing, with no chance of touching its data. Because the sentences are generated from the numbers, re-running after the full run updates the text as well as the charts.",
     },
   ];
 
@@ -341,12 +341,15 @@
       const { ui } = ctx;
 
       // ---------------- Explain
+      const ts = ctx.data.active().timeseries;
+      const coverage = ts && Array.isArray(ts.t) && ts.t.length > 1
+        ? ` (The export this course uses holds ${ts.t.length} rounds, covering ${fmt.num((ts.t[ts.t.length - 1] - ts.t[0]) / 3600, 1)} hours.)` : "";
       const ex = ctx.section("explain", "An assembly line that expects things to break");
       ex.append(
         ui.prose(`
 The project is a [[pipeline]]: an assembly line where each station does one job and hands its output to the next. **Fetch** the books, **normalize** them into one shape, **store** them, replay them through the **engine**, **analyze** the results, **report**. Each station is one or two Python files, and none of them knows how the others work inside. That is what lets you swap a station (a new venue, a new metric) without touching the rest.
 
-The interesting station is the first one. The [[collector]] ran for 24 hours, calling four public services every 5 minutes: 288 ticks, each with three books and 48 [[jupiter|Jupiter]] quotes. Over a day, something *will* go wrong: a timeout, an overloaded server, a [[rate-limit|rate limit]], a laptop that goes to sleep. Good design means deciding in advance what happens each time.`),
+The interesting station is the first one. The [[collector]] was built to run for 24 hours, calling four public services every 5 minutes: 288 snapshot rounds a day, each with three books and 48 [[jupiter|Jupiter]] quotes.${coverage} Over a day, something *will* go wrong: a timeout, an overloaded server, a [[rate-limit|rate limit]], a laptop that goes to sleep. Good design means deciding in advance what happens each time.`),
         ui.prose(`
 The collector's rules:
 
@@ -355,7 +358,7 @@ The collector's rules:
 - **Retry politely**: wait 1, 2, then 4 seconds with a little randomness ([[exponential-backoff|exponential backoff]]), and if a server says "Retry-After: 2", wait exactly that long.
 - **Write each tick in one [[db-transaction|database transaction]]**, so a crash leaves the whole tick or none of it.
 - **Resume after a restart**: \`collect --resume\` carries on with the same run and skips ticks already stored. Ctrl+C finishes the current tick first.
-- **Protect the run from its author.** The 24-hour run used its own copy of the code (a pinned git worktree), so edits made during the day couldn't change it halfway.`),
+- **Protect the run from its author.** The run used its own copy of the code (a pinned git worktree), so edits made during the day couldn't change it halfway.`),
         ui.Callout({
           kind: "project", title: "SQLite, not Parquet: the reasoning",
           body: "[[sqlite|SQLite]] is built into Python, survives a crash mid-write, enforces \"one row per venue per tick\" with a unique key, and answers `status` and `report` with plain SQL. A day is 288 ticks, an estimated 15 MB. Parquet, a columnar file format, wins when you scan millions of rows for a few columns. At exchange scale the answer flips: append to a log, then compact it into Parquet files split by day and market.",
@@ -367,7 +370,7 @@ The collector's rules:
 - **A [[sequencer]] decides the order.** Before matching, every order gets a place in one agreed sequence and is written to a log. Replaying the log rebuilds the book exactly: [[determinism]] doubles as crash recovery.
 - **[[latency|Latency]] budgets.** The collector thinks in seconds; a matching engine in microseconds. Nothing slow (disk, network, memory allocation) is allowed on the path an order takes.
 - **Compiled languages and fixed memory.** Our pure-Python engine handles about 758,000 events per second; Rust or C++ with preallocated arrays is far faster.
-- **On-chain limits.** Every [[validator]] re-runs every trade, so a Solana [[transaction]] gets a fixed [[compute-budget|compute budget]]. Phoenix keeps a whole market in one [[account]] (about 1.7 MB for SOL/USDC), and Solana only runs transactions side by side when they write different accounts, so every trade on one market waits its turn.`));
+- **On-chain limits.** Every [[validator]] re-runs every trade, so a Solana [[transaction]] gets a fixed [[compute-budget|compute budget]]. Phoenix keeps a whole market in one [[account]] (about 1.7 MB for SOL/USDC), and Solana only runs two transactions side by side when neither writes an account the other uses, so every trade on one market waits its turn. (Solana also caps how much compute all the transactions writing one account may use per block.)`));
 
       // ---------------- See
       const see = ctx.section("see", "The pipeline, station by station");
@@ -394,7 +397,7 @@ The collector's rules:
       }),
       ui.Callout({
         kind: "real", title: "The real run's one gap, and why it stayed",
-        body: `The 24-hour run started at 05:09 UTC. The collector began with the slot it was in, 05:05, and that tick took 105 seconds (mostly the paced Jupiter quotes), so it finished at 05:11, already inside the 05:10 slot. The pinned code skipped a slot it had run into, so 05:10 is missing: it is the break in chapter 11's charts.
+        body: `The collector run started at 05:09 UTC. The collector began with the slot it was in, 05:05, and that tick took 105 seconds (mostly the paced Jupiter quotes), so it finished at 05:11, already inside the 05:10 slot. The pinned code skipped a slot it had run into, so 05:10 is missing: it is the break in chapter 11's charts.
 
 The fix, "collect a slot late instead of skipping it" (what this simulator does), was committed five minutes after the run started. The run was deliberately left on its pinned commit, so every tick of the day is collected by the same code.`,
       }),
@@ -428,8 +431,8 @@ The fix, "collect a slot late instead of skipping it" (what this simulator does)
       {
         q: "Why can't Solana run two trades on the **same** Phoenix market at the same time, side by side?",
         options: [
-          { text: "Solana's validators can only run one transaction at a time", why: "Solana does run transactions in parallel, but only when they write to different accounts." },
-          { text: "Both trades write the same market account, and Solana only runs transactions in parallel when their writes don't overlap", why: "Right. Phoenix keeps the whole book in one account, so every trade on that market must wait its turn. Trades on different markets can run side by side, which is sharding by market." },
+          { text: "Solana's validators can only run one transaction at a time", why: "Solana does run transactions in parallel, but only when neither writes an account the other uses." },
+          { text: "Both write the market account, and Solana runs two transactions in parallel only if neither writes an account the other uses", why: "Right. Phoenix keeps the whole book in one account, so every trade on that market must wait its turn. Trades on different markets can run side by side, which is sharding by market." },
           { text: "Phoenix allows only one trade per slot", why: "Many trades can land in the same slot; they just run one after another when they touch the same market account." },
           { text: "Floating-point rounding would make parallel trades disagree", why: "Phoenix uses integers, so rounding isn't the issue. The limit comes from two transactions writing the same account." },
         ],

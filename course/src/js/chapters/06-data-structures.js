@@ -561,7 +561,7 @@ The rules from chapters 3 and 4: best price first (\`book.prices[0]\` is the low
     { n: "981", t: "Time Based Key-Value Store", slug: "time-based-key-value-store", lvl: "Medium", why: "Binary search over sorted keys, like finding where a new price level goes." },
     { n: "1845", t: "Seat Reservation Manager", slug: "seat-reservation-manager", lvl: "Medium", why: "Always hand out the smallest free number: a heap or a sorted set. Chapter 9's free list solves a cousin of it." },
     { n: "450", t: "Delete Node in a BST", slug: "delete-node-in-a-bst", lvl: "Medium", why: "What a tree does when a price level empties, without the rebalancing." },
-    { n: "1801", t: "Number of Orders in the Backlog", slug: "number-of-orders-in-the-backlog", lvl: "Medium", why: "An order book matching problem. Solve it with two heaps, then explain why heaps can't cancel an order in O(1)." },
+    { n: "1801", t: "Number of Orders in the Backlog", slug: "number-of-orders-in-the-backlog", lvl: "Medium", why: "An order book matching problem. Solve it with two heaps, then explain why a heap can't cancel an order in O(1)." },
   ];
 
   /* ================================================================== the chapter */
@@ -613,7 +613,7 @@ The engine in \`orderbook.py\` combines three [[data-structure|data structures]]
           ],
         }),
         ui.prose(`
-In one sentence: **everything that touches a single order is O(1); only creating or deleting a whole price level costs O(log L).** Why not a plain list sorted by price and time? Cancelling would mean searching it, O(n). Why not a [[heap]]? It finds the best price fast but can't remove an order from the middle.`),
+In one sentence: **everything that touches a single order is O(1); only creating or deleting a whole price level costs O(log L).** Why not a plain list sorted by price and time? Cancelling would mean searching it, O(n). Why not a [[heap]] (a tree that always keeps the smallest or largest item on top)? It finds the best price fast, but a plain heap can't find an arbitrary entry without an extra index (with a position map it can delete one in O(log n)), and it can't look up a price level at all.`),
         ui.Callout({
           kind: "project", title: "Measured, not just claimed",
           body: `The project's benchmark replays one million random adds, cancels and market orders through \`orderbook.py\` and times each call ([[nanosecond|ns]] = a billionth of a second). The ranking matches the Big-O story: a cancel is the cheapest real operation; a new level costs about 600 ns more than joining one; market orders have the long tail because big ones sweep several levels. Throughput: **757,703 events per second**, in pure Python.`,
