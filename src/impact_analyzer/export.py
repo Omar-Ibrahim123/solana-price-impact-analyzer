@@ -150,13 +150,16 @@ EXPLAIN: dict[str, str] = {
     "bump_index": "One past the highest node ever used: nodes from here on have never been "
     "touched.",
     "free_list_head": "The first deleted node waiting to be reused; each one points to the next.",
-    "left": "Index of the left child: an order with a better place in the sort.",
-    "right": "Index of the right child.",
+    "left": "Index of the left child: the subtree of orders whose key sorts before this one.",
+    "free_next": "On the free list this first register is reused: it holds the index of the "
+    "next free node (0 ends the list).",
+    "right": "Index of the right child: the subtree of orders whose key sorts after this one.",
     "parent": "Index of this node's parent (0 for the root).",
     "color": "Red-black colour (0 = black, 1 = red): the rule that keeps the tree balanced.",
     "price_in_ticks": "The order's price in ticks.",
     "node_order_sequence_number": "The order's sequence number. For bids Phoenix stores it "
-    "bit-flipped (NOT seq), so the tree's ascending order puts the oldest bid first.",
+    "bit-flipped (NOT seq, so the top bit is set): walking the tree from its largest key down "
+    "then meets the highest price first and, within a price, the oldest bid first.",
     "trader_index": "Which seat placed this order (an index into the traders tree).",
     "num_base_lots": "The order's remaining size, in base lots.",
     "last_valid_slot": "The slot after which the order expires (0 = never).",
@@ -231,6 +234,7 @@ def phoenix_account_slice(raw: bytes, slot: int | None, address: str, n_nodes: i
                 lots = struct.unpack_from("<Q", raw, node + f.offset)[0]
                 text += f" {lots:,} x {lot} SOL = {float(lots * lot):,.3f} SOL."
             elif f.name == "left":
+                text = EXPLAIN["free_next"] if i in free else text
                 text = f"Node {i + 1} is {state}. " + text
             fields.append(_entry(f, raw, node + f.offset, f"bids.node[{i + 1}].{f.name}", text))
     end = tree + phoenix.TREE_PREFIX_SIZE + n_nodes * phoenix.NODE_SIZE
@@ -449,7 +453,7 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
 def cmd_export(args: argparse.Namespace) -> None:
     if not Path(args.db).exists():
         sys.exit(f"{args.db} does not exist (collect some data first: collect)")
-    with Store(args.db) as store:
+    with Store(args.db, readonly=True) as store:  # never write to the database we export
         doc = export_v2(
             store,
             run_id=args.run,

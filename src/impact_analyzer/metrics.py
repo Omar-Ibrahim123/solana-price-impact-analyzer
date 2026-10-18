@@ -31,6 +31,22 @@ And one more, robust to the price moving while we measure:
 
 Fees are never mixed in silently: every trade row has ``cost_bps``,
 ``fee_bps`` and ``all_in_bps = cost_bps + fee_bps``.
+
+Where the 10% price protection band sits matters just as much. v1 centred
+it on the book's own mid. That breaks when the mid itself is junk: on
+2026-10-18 Phoenix's best bid was ~$89 and best ask ~$104.35 while the market
+was ~$103.7, so its own mid was ~$96.7 and a band of +/-10% around it let a
+"protected" sell fill at $89, 14% below the market. So every trade is
+simulated twice:
+
+- **band on the reference mid** (the headline numbers: ``filled_usd``,
+  ``avg_price``, ``cost_bps``...): the order refuses anything more than 10%
+  from the market price, which is what a real trader's limit would do;
+- **band on the venue's own mid** (``own_band_*`` fields): v1's behaviour,
+  kept as a secondary column so the two can be compared.
+
+For the exchanges the two are nearly identical (their mid *is* the market);
+for Phoenix they can differ completely.
 """
 
 from __future__ import annotations
@@ -47,7 +63,7 @@ from .store import Run, Store
 
 # Bump whenever a formula or a field below changes meaning: cached rows with an
 # older version are then ignored and recomputed, instead of silently mixing.
-METRICS_VERSION = 1
+METRICS_VERSION = 2  # 2: protection band anchored on the reference mid (own-mid kept too)
 DEPTH_BANDS = (0.005, 0.01, 0.02)  # 0.5%, 1%, 2% of mid
 # Jupiter's ways of saying "no pool can fill this": not an outage, a liquidity fact.
 NO_ROUTE_MARKERS = ("NO_ROUTES_FOUND", "COULD_NOT_FIND_ANY_ROUTE")
@@ -78,6 +94,11 @@ def cost_bps(side: str, avg_price: float, ref: float) -> float:
     if side == "sell":
         return (ref - avg_price) / ref * 10_000  # received less than the fair price
     raise ValueError(f"side must be 'buy' or 'sell', got {side!r}")
+
+
+def _cost_or_none(side: str, avg_price: float | None, ref: float | None) -> float | None:
+    """``cost_bps``, or None when nothing filled or there is no reference mid."""
+    return cost_bps(side, avg_price, ref) if avg_price and ref else None
 
 
 def half_round_trip_bps(buy_avg: float, sell_avg: float, ref: float) -> float:
@@ -129,10 +150,17 @@ def size_at_best(snapshot: BookSnapshot, orders: list[RestingOrder]) -> float:
 
 
 class Trade(TypedDict):
-    """One simulated market order on one snapshot."""
+    """One simulated market order on one snapshot.
+
+    The unprefixed fields use the protection band centred on the reference mid
+    (``band_anchor == "ref"``; "own" only when the tick has no reference mid).
+    The ``own_band_*`` fields repeat the order with v1's band, centred on the
+    venue's own mid.
+    """
 
     side: str  # "buy" or "sell" (SOL)
     usd: float  # size we asked for
+    band_anchor: str  # "ref" or "own": where the 10% protection band was centred
     filled_usd: float  # what the book could absorb inside price protection
     fully_filled: bool
     levels_swept: int  # distinct prices touched
@@ -141,6 +169,11 @@ class Trade(TypedDict):
     cost_bps: float | None  # vs the tick's reference mid
     fee_bps: float  # taker fee (base tier)
     all_in_bps: float | None  # cost_bps + fee_bps
+    own_band_filled_usd: float  # the same order, band centred on the venue's own mid
+    own_band_fully_filled: bool
+    own_band_avg_price: float | None
+    own_band_impact_bps: float | None
+    own_band_cost_bps: float | None
 
 
 class BookMetrics(TypedDict):
@@ -192,12 +225,16 @@ def book_metrics(
         for usd in sizes:
             by_side = {}
             for side in ("buy", "sell"):
-                r = simulate(snapshot, side, usd, max_slippage)
-                cost = cost_bps(side, r.avg_price, ref_mid) if r.avg_price and ref_mid else None
+                # Headline: refuse fills more than max_slippage from the *market* price.
+                r = simulate(snapshot, side, usd, max_slippage, anchor=ref_mid)
+                # Secondary: v1's band around the venue's own mid (junk when the mid is).
+                own = simulate(snapshot, side, usd, max_slippage) if ref_mid else r
+                cost = _cost_or_none(side, r.avg_price, ref_mid)
                 trades.append(
                     Trade(
                         side=side,
                         usd=usd,
+                        band_anchor="ref" if ref_mid else "own",
                         filled_usd=r.filled_usd,
                         fully_filled=r.fully_filled,
                         levels_swept=r.levels_swept,
@@ -206,6 +243,11 @@ def book_metrics(
                         cost_bps=cost,
                         fee_bps=fee,
                         all_in_bps=cost + fee if cost is not None else None,
+                        own_band_filled_usd=own.filled_usd,
+                        own_band_fully_filled=own.fully_filled,
+                        own_band_avg_price=own.avg_price,
+                        own_band_impact_bps=own.impact_bps,
+                        own_band_cost_bps=_cost_or_none(side, own.avg_price, ref_mid),
                     )
                 )
                 by_side[side] = r

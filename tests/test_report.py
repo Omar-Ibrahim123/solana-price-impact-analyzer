@@ -7,6 +7,7 @@ from impact_analyzer import metrics
 from impact_analyzer.__main__ import main
 from impact_analyzer.metrics import METRICS_VERSION, load_dataset
 from impact_analyzer.report import build_report, fmt_bps
+from impact_analyzer.store import Store
 
 CHARTS = (
     "spread_over_time.png",
@@ -41,6 +42,14 @@ def test_report_writes_markdown_and_every_chart(store, tmp_path):
     assert "| Kraken | 3 | 2 |" in md  # health table: one failed tick of three
     assert "## Method" in md and "## Caveats" in md
     assert "partial run" not in md  # the run collected every tick it planned
+
+
+def test_report_reads_a_live_database_without_writing(store, tmp_path):
+    with Store(store.path, readonly=True) as ro:
+        md = build_report(ro, tmp_path / "ro").read_text(encoding="utf-8")
+    assert "## Does splitting a big order help?" in md  # execution.py's TWAP section
+    assert md.index("## Does splitting") < md.index("## Method")
+    assert store.db.execute("SELECT COUNT(*) FROM metrics").fetchone()[0] == 0  # no cache rows
 
 
 def test_report_on_a_single_tick(tmp_path):

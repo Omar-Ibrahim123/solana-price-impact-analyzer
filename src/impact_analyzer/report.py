@@ -23,6 +23,7 @@ from pathlib import Path
 
 from . import charts
 from .charts import label, short_usd
+from .execution import twap_markdown
 from .fees import BASE_TIER_TAKER_BPS
 from .impact import DEFAULT_MAX_SLIPPAGE, DEFAULT_SIZES_USD
 from .metrics import METRICS_VERSION, Dataset, load_dataset, series_name
@@ -190,6 +191,22 @@ def headlines(
             f"routing through Phoenix (median over ticks)."
         )
 
+    # 5c. Where the protection band sits changes the answer (a venue with a junk own mid).
+    for v in venues:
+        for side in ("buy", "sell"):
+            ref_fill = _fill_count(summaries, (v, "filled", side, small))
+            own_fill = _fill_count(summaries, (v, "own_band_filled", side, small))
+            if not ref_fill or not own_fill or ref_fill[0] >= own_fill[0]:
+                continue
+            own_cost = _median(summaries, (v, "own_band_cost_bps", side, small))
+            out.append(
+                f"Price protection matters on {label(v)}: a {short_usd(small)} {side} limited to "
+                f"10% from the reference mid filled in {ref_fill[0]}/{ref_fill[1]} ticks; with "
+                f"v1's band around {label(v)}'s own mid it would have filled in "
+                f"{own_fill[0]}/{own_fill[1]}, at a median {fmt_bps(own_cost)} bps worse than the "
+                f"market. This report uses the reference-mid band."
+            )
+
     # 6. Where routes run out
     for dex in data.dexes:
         s = series_name(dex)
@@ -318,17 +335,27 @@ def book_table(data: Dataset, summaries: dict[Key, Summary]) -> str:
     )
 
 
-def cost_table(series: Sequence[str], summaries: dict[Key, Summary], sizes: Sequence[float]) -> str:
-    """Median cost vs ref per size; a cell filled in only some ticks says how many."""
+def cost_table(
+    series: Sequence[str],
+    summaries: dict[Key, Summary],
+    sizes: Sequence[float],
+    cost: str = "cost_bps",
+    filled: str = "filled",
+) -> str:
+    """Median cost vs ref per size; a cell filled in only some ticks says how many.
+
+    ``cost``/``filled`` pick the metrics: the headline (band on the reference mid)
+    or ``own_band_cost_bps``/``own_band_filled`` (v1's band on the venue's own mid).
+    """
     rows = []
     for s in series:
         for side in ("buy", "sell"):
-            if not any((s, "filled", side, float(u)) in summaries for u in sizes):
+            if not any((s, filled, side, float(u)) in summaries for u in sizes):
                 continue
             cells = []
             for usd in sizes:
-                med = _median(summaries, (s, "cost_bps", side, float(usd)))
-                fc = _fill_count(summaries, (s, "filled", side, float(usd)))
+                med = _median(summaries, (s, cost, side, float(usd)))
+                fc = _fill_count(summaries, (s, filled, side, float(usd)))
                 cell = fmt_bps(med) if med is not None else "no fill"
                 if fc and fc[0] < fc[1]:
                     cell += f" ({fc[0]}/{fc[1]} filled)"
@@ -421,7 +448,10 @@ def render_markdown(
     chart_paths: dict[str, Path | None],
     sizes: Sequence[float],
     max_slippage: float,
+    extra_sections: Sequence[str] = (),
 ) -> str:
+    """The whole REPORT.md. ``extra_sections`` (Markdown, each starting with a ``##``
+    heading, e.g. the TWAP section) go after the tables, before Method."""
     ticks = data.ticks
     venues, routes = data.venues, [series_name(d) for d in data.dexes]
     md = ["# SOL/USDC liquidity: Phoenix vs Kraken vs Coinbase vs Jupiter routes", ""]
@@ -467,6 +497,14 @@ def render_markdown(
         "",
         cost_table(venues + routes, summaries, sizes),
         "",
+        f"### Order books with v1's protection band (+/-{max_slippage:.0%} of the venue's own mid)",
+        "",
+        "Secondary: the same orders, but protected around each venue's *own* mid, as v1 did. "
+        "Identical to the table above when a venue's mid is the market price; very different "
+        "when it isn't (see Caveats).",
+        "",
+        cost_table(venues, summaries, sizes, cost="own_band_cost_bps", filled="own_band_filled"),
+        "",
         "### Half round-trip cost (median bps of the reference mid)",
         "",
         round_trip_table(venues + routes, summaries, sizes),
@@ -479,6 +517,8 @@ def render_markdown(
         health_table(healths, venues + routes),
         "",
     ]
+    for section in extra_sections:
+        md += [section.rstrip(), ""]
     fees = ", ".join(f"{k} {v:g} bps" for k, v in BASE_TIER_TAKER_BPS.items())
     md += [
         "## Method",
@@ -493,8 +533,9 @@ def render_markdown(
         "when a venue's own mid is off the market, so the charts use the reference mid.",
         f"- **Order book costs** come from replaying each stored snapshot into the matching "
         f"engine and sending a market order, with price protection: no fill more than "
-        f"{max_slippage:.0%} from the venue's own mid. Sizes the book can't fill inside that band "
-        f"are partial fills; they are counted, never charted as full.",
+        f"{max_slippage:.0%} from the tick's reference mid. Sizes the book can't fill inside that "
+        f"band are partial fills; they are counted, never charted as full. The same order with "
+        f"the band around the venue's own mid (v1's rule) is kept as a secondary table.",
         "- **Half round trip** = `(buy avg - sell avg) / 2 / ref * 1e4` for the same size at the "
         "same tick. It equals the mean of buy and sell cost, and the reference level cancels out, "
         "so price drift between the buy and the sell quote mostly cancels too.",
@@ -505,6 +546,12 @@ def render_markdown(
         "",
         "## Caveats",
         "",
+        "- **Where the protection band sits.** A band around a venue's own mid is only as good "
+        "as that mid. Phoenix's book can be lopsided (on 2026-10-18 its best bid sat near $89 "
+        "while the market was near $103.7), which drags its mid far from the market, and a "
+        "+/-10% band around that mid lets a 'protected' sell fill 14% below the market. So the "
+        "headline numbers anchor the band on the reference mid (what a trader's limit price "
+        "would do), and the own-mid version is shown separately so the difference is visible.",
         "- **Aggregated exchange levels.** Kraken (top 500 levels per side) and Coinbase publish "
         "price levels, not individual orders; Phoenix's book is every order. Hidden and iceberg "
         "liquidity on the exchanges is invisible here.",
@@ -579,7 +626,11 @@ def build_report(
             activity, out_dir / "phoenix_activity.png", data.interval_s
         ),
     }
-    md = render_markdown(data, summaries, activity, healths, chart_paths, sizes, max_slippage)
+    # "Does splitting a big order help?": execution.py replays TWAPs over the same snapshots.
+    twap = twap_markdown(store, run_id=run_id)
+    md = render_markdown(
+        data, summaries, activity, healths, chart_paths, sizes, max_slippage, [twap]
+    )
     path = out_dir / "REPORT.md"
     path.write_text(md, encoding="utf-8")
     return path
@@ -611,7 +662,9 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
 def cmd_report(args: argparse.Namespace) -> None:
     if not Path(args.db).exists():
         sys.exit(f"{args.db} does not exist (collect some data first: collect)")
-    with Store(args.db) as store:
+    # Read-only: the report may run against the live database while the collector writes
+    # it, and SQLite then refuses every write (the metrics cache is simply skipped).
+    with Store(args.db, readonly=True) as store:
         path = build_report(
             store,
             Path(args.out),

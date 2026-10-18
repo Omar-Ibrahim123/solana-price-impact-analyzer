@@ -183,5 +183,35 @@ def test_book_round_trips_skip_partials():
     assert [(r["series"], r["usd"]) for r in rts] == [("kraken", 500.0)]
 
 
+def test_protection_band_sits_on_the_reference_mid_not_a_junk_own_mid():
+    """Phoenix on 2026-10-18: best bid $89, best ask $104.35, market ~$103.70.
+
+    Its own mid ($96.675) is junk, so v1's band (+/-10% of own mid, floor $87.01)
+    let a sell fill at $89, 14% below the market. Anchored on the reference
+    mid the floor is $93.33: nobody is bidding there, so nothing fills.
+    """
+    book = BookSnapshot(
+        venue="phoenix",
+        symbol="SOL/USDC",
+        fetched_at=0.0,
+        tick_size=Decimal("0.01"),
+        lot_size=Decimal("0.001"),
+        bids=[RestingOrder(8900, 61_000)],  # $89.00 x 61 SOL
+        asks=[RestingOrder(10435, 25_000)],  # $104.35 x 25 SOL
+        meta={"taker_fee_bps": 2},
+    )
+    m = book_metrics(book, 103.7, sizes_usd=[1_000])
+    sell, buy = trade(m, "sell", 1_000), trade(m, "buy", 1_000)
+    assert sell["band_anchor"] == "ref"
+    assert sell["filled_usd"] == 0 and sell["avg_price"] is None and sell["cost_bps"] is None
+    assert not sell["fully_filled"]
+    assert sell["own_band_fully_filled"] and sell["own_band_avg_price"] == pytest.approx(89.0)
+    assert sell["own_band_cost_bps"] == pytest.approx((103.7 - 89.0) / 103.7 * 1e4)  # 1,418
+    # The ask is inside both bands, so the buy is the same either way.
+    assert buy["cost_bps"] == pytest.approx((104.35 - 103.7) / 103.7 * 1e4)  # 62.7
+    assert buy["own_band_cost_bps"] == pytest.approx(buy["cost_bps"])
+    assert m["round_trip_bps"]["1000"] is None  # the sell side can't fill
+
+
 def test_metrics_version_is_an_int():
     assert isinstance(metrics.METRICS_VERSION, int)

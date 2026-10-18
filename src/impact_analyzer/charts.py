@@ -381,7 +381,9 @@ def _missing_note(missing: list[tuple[str, str, float]]) -> str:
     if not first:
         return ""
     parts = [f"{label(s)} {side} from {short_usd(u)}" for (s, side), u in first.items()]
-    return "Never filled (no route, or the book ran out within 10% of mid): " + "; ".join(parts)
+    return "Never filled (no route, or nothing left within 10% of the reference mid): " + "; ".join(
+        parts
+    )
 
 
 def round_trip_vs_size(

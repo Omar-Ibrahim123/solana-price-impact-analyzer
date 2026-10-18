@@ -91,11 +91,15 @@ def simulate(
     side: str,
     target_usd: float,
     max_slippage: float = DEFAULT_MAX_SLIPPAGE,
+    anchor: float | None = None,
 ) -> ImpactResult:
     """Simulate one market order of ``target_usd`` on ``snapshot``.
 
     ``side`` is ``"buy"`` (lifts asks) or ``"sell"`` (hits bids). The order
-    trades no further than ``max_slippage`` from mid.
+    trades no further than ``max_slippage`` from ``anchor``, which defaults to
+    the book's own mid. Pass another fair price (``metrics.py`` passes the
+    exchanges' reference mid) when the book's own mid can't be trusted.
+    Impact is always measured against the book's own mid.
     """
     if side not in ("buy", "sell"):
         raise ValueError(f"side must be 'buy' or 'sell', got {side!r}")
@@ -106,7 +110,7 @@ def simulate(
         raise ValueError(f"{snapshot.venue}: cannot measure impact on a one-sided book")
 
     taker = Side.BID if side == "buy" else Side.ASK
-    limit = protection_limit(snapshot, taker, mid, max_slippage)
+    limit = protection_limit(snapshot, taker, mid if anchor is None else anchor, max_slippage)
     lots = lots_for_notional(snapshot, taker, target_usd, limit)
     fills = load_book(snapshot).market_order(taker, lots, limit) if lots > 0 else []
 

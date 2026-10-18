@@ -126,6 +126,11 @@ def observations(
                 add(ts, venue, "impact_bps", t["impact_bps"], t["side"], t["usd"])
                 add(ts, venue, "cost_bps", t["cost_bps"], t["side"], t["usd"])
                 add(ts, venue, "all_in_bps", t["all_in_bps"], t["side"], t["usd"])
+            # The same order with v1's protection band (centred on the venue's own mid).
+            own_full = t["own_band_fully_filled"]
+            add(ts, venue, "own_band_filled", 1.0 if own_full else 0.0, t["side"], t["usd"])
+            if own_full:
+                add(ts, venue, "own_band_cost_bps", t["own_band_cost_bps"], t["side"], t["usd"])
     for q in quotes:
         ts, series = q["tick_ts"], q["series"]
         if q["ok"] or q["no_route"]:  # other errors (rate limits...) say nothing about liquidity
