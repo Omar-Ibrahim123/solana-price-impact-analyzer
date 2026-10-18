@@ -1159,8 +1159,9 @@ def format_twap(r: TwapResult, benchmark: Benchmark = "own") -> str:
     )
     if not (r.fully_filled and one.fully_filled):
         lines.append(
-            "Partial fills: some IOC size found nothing inside its limit and was cancelled; "
-            "costs are on what filled."
+            f"Partial fills: one-shot {one.fill_ratio:.1%}, TWAP {r.fill_ratio:.1%}. IOC size "
+            f"with nothing inside its limit was cancelled; costs are on what filled, so they "
+            f"compare different amounts."
         )
     return "\n".join(lines)
 
