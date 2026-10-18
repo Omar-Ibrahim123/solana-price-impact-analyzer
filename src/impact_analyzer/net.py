@@ -124,7 +124,9 @@ class Http:
             start = time.perf_counter()
             try:
                 resp = self.client.request(method, url, **kwargs)
-            except httpx.TransportError as e:  # timeouts, DNS, refused connections
+            # RequestError covers timeouts, DNS, refused connections, and also broken
+            # responses (a corrupt gzip body, too many redirects): all worth a retry.
+            except httpx.RequestError as e:
                 last_error = f"{type(e).__name__}: {e}"
                 retry_after = reset_at = None
             else:

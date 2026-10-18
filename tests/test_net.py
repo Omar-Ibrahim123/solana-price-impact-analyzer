@@ -79,3 +79,10 @@ def test_4xx_is_not_retried_and_keeps_body():
         make_http(transport, []).get_json("https://x.test/a")
     assert info.value.status == 400 and "NO_ROUTES_FOUND" in info.value.body
     assert len(calls) == 1
+
+
+def test_broken_response_body_is_retried():
+    # A corrupt gzip body raises httpx.DecodingError (a RequestError, not a TransportError).
+    transport, calls = scripted(httpx.DecodingError("bad gzip"), httpx.Response(200, json={}))
+    resp = make_http(transport, []).get_json("https://x.test/a")
+    assert resp.attempts == 2 and len(calls) == 2

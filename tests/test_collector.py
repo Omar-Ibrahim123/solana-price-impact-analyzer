@@ -273,3 +273,72 @@ def test_readonly_store_reads_but_never_writes(store, tmp_path):
             reader.db.execute("DELETE FROM ticks")
     with pytest.raises(FileNotFoundError):
         Store(tmp_path / "missing.sqlite", readonly=True)
+
+
+def test_an_unexpected_quote_error_becomes_an_error_row(store):
+    # Regression: a 200 response with a malformed body (e.g. "inAmount": null) raised
+    # TypeError, which escaped the quote grid and ended the whole run.
+    clock = FakeClock(T0)
+    collector = make_collector(store, clock)
+
+    def broken_quote(http, req):
+        raise TypeError("int() argument must be a string, not 'NoneType'")
+
+    collector.quote_fn = broken_quote
+    run = collector.start_run()
+    assert collector.run(run) == 3  # every tick still stored
+    quotes = store.quotes(run.run_id, ok_only=False)
+    assert quotes and all(not q["ok"] for q in quotes)
+    assert quotes[0]["error"].startswith("unexpected TypeError")
+
+
+def test_a_failing_tick_is_logged_and_the_run_goes_on(store, caplog):
+    clock = FakeClock(T0)
+    collector = make_collector(store, clock)
+    original = collector.collect_tick
+
+    def flaky(ts):
+        if ts == T0 + 300:
+            raise RuntimeError("disk hiccup")
+        return original(ts)
+
+    collector.collect_tick = flaky
+    run = collector.start_run()
+    assert collector.run(run) == 2
+    assert [t["tick_ts"] - T0 for t in store.ticks(run.run_id)] == [0, 600]
+    assert "disk hiccup" in caplog.text
+
+
+def test_reference_mid_fallback_expires(store):
+    clock = FakeClock(T0)
+    state = {"down": False}
+
+    def exchange(venue):
+        good = book_fetcher(venue)
+
+        def fetch(http, rpc):
+            if state["down"]:
+                raise FetchError("down", attempts=1)
+            return good(http, rpc)
+
+        return fetch
+
+    fetchers = {
+        "phoenix": book_fetcher("phoenix"),
+        "kraken": exchange("kraken"),
+        "coinbase": exchange("coinbase"),
+    }
+    collector = make_collector(store, clock, fetchers=fetchers, duration_s=1_500)
+    run = collector.start_run()
+    original = collector.collect_tick
+
+    def tick(ts):
+        state["down"] = ts > T0  # both exchanges fail from the second tick on
+        return original(ts)
+
+    collector.collect_tick = tick
+    collector.run(run)
+    refs = [t["ref_mid"] for t in store.ticks(run.run_id)]
+    # Reused for up to two intervals, then dropped rather than going stale.
+    assert refs[0] is not None and refs[1] == refs[0] and refs[2] == refs[0]
+    assert refs[3] is None and refs[4] is None

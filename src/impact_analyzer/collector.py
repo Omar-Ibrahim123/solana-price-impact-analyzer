@@ -45,6 +45,8 @@ from .venues import FETCHERS, REFERENCE_VENUES, VENUES, Fetched, fetch_slot
 
 log = logging.getLogger("impact_analyzer.collect")
 
+REF_MAX_AGE_INTERVALS = 2  # how stale a reused reference mid may be, in ticks
+
 DURATION_RE = re.compile(r"(\d+(?:\.\d+)?)([smhd])")
 UNIT_S = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 
@@ -134,6 +136,7 @@ class Collector:
         self.sleep = sleep
         self.stop_requested = False
         self.last_ref_mid: float | None = None  # fallback when both exchanges fail
+        self.last_ref_at = -math.inf  # when last_ref_mid was measured
 
     def request_stop(self) -> None:
         self.stop_requested = True
@@ -162,11 +165,18 @@ class Collector:
             if self.store.tick_exists(run.run_id, tick_ts):
                 log.info("tick %s already stored, skipping", _hhmm(tick_ts))
             else:
-                tick = self.collect_tick(tick_ts)
-                self.store.insert_tick(run.run_id, tick)
-                written += 1
-                done = len(self.store.ticks(run.run_id))
-                log.info("%s", format_tick(tick, done, expected))
+                try:
+                    tick = self.collect_tick(tick_ts)
+                    self.store.insert_tick(run.run_id, tick)
+                except Exception:  # noqa: BLE001 - a 24 h run must outlive one bad tick
+                    # Venue and quote errors are already recorded per row; reaching this
+                    # means something unexpected. Log it with its traceback, lose this one
+                    # tick, and keep collecting rather than ending the whole run.
+                    log.exception("tick %s failed; continuing with the next one", _hhmm(tick_ts))
+                else:
+                    written += 1
+                    done = len(self.store.ticks(run.run_id))
+                    log.info("%s", format_tick(tick, done, expected))
             # Normally the next slot starts in the future and we sleep until it. If this
             # tick overran into a later slot, collect that slot now (a little late, and
             # its started_at says so) rather than lose it; only slots we ran *past* are lost.
@@ -261,8 +271,14 @@ class Collector:
         mids = [m for m in mids if m]
         if mids:
             self.last_ref_mid = statistics.fmean(mids)
+            self.last_ref_at = self.clock()
             return self.last_ref_mid
-        return self.last_ref_mid  # both exchanges down: reuse the last known price
+        # Both exchanges down: reuse the last known price, but only if it is recent.
+        # An hours-old price would make every "cost vs reference" number fiction, so
+        # beyond two intervals we store None (and skip the Jupiter grid) instead.
+        if self.clock() - self.last_ref_at <= REF_MAX_AGE_INTERVALS * self.config.interval_s:
+            return self.last_ref_mid
+        return None
 
     def _quote_grid(self, ref_mid: float) -> list[QuoteRecord]:
         grid = jupiter.build_grid(self.config.jupiter_dexes, self.config.jupiter_sizes, ref_mid)
@@ -288,6 +304,11 @@ class Collector:
             return rec
         except (FetchError, ValueError, KeyError) as e:
             rec.error = f"{type(e).__name__}: {e}"[:500]
+            return rec
+        except Exception as e:  # noqa: BLE001 - e.g. a 200 with a malformed body
+            # Anything else Jupiter throws at us becomes an error row too: one odd
+            # quote must never cost us the tick (or the run).
+            rec.error = f"unexpected {type(e).__name__}: {e}"[:500]
             return rec
         rec.ok = True
         rec.latency_ms = latency
