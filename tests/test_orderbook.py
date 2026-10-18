@@ -225,6 +225,32 @@ def test_cancel_after_partial_fill_removes_remaining_size(book):
     assert book.depth(ASK) == [(15_000, 5)]
 
 
+# ---- reduce (keeps queue place) ---------------------------------------------------
+
+
+def test_reduce_keeps_queue_position_and_updates_level_total(book):
+    """Alice 10, Bob 5; Alice reduces to 3; she is still first in line."""
+    book.add_order(1, ASK, 15_000, 10)
+    book.add_order(2, ASK, 15_000, 5)
+    book.reduce_order(1, 3)
+    assert level_ids(book.asks[15_000]) == [1, 2]
+    assert book.depth(ASK) == [(15_000, 8)]
+    assert book.market_order(BID, 4) == [Fill(1, 15_000, 3), Fill(2, 15_000, 1)]
+
+
+@pytest.mark.parametrize("new_size", [0, 10, 11, -1])
+def test_reduce_rejects_sizes_that_are_not_smaller(book, new_size):
+    book.add_order(1, ASK, 15_000, 10)
+    with pytest.raises(ValueError):
+        book.reduce_order(1, new_size)
+    assert book.depth(ASK) == [(15_000, 10)]  # nothing changed
+
+
+def test_reduce_unknown_id_raises(book):
+    with pytest.raises(KeyError):
+        book.reduce_order(999, 1)
+
+
 # ---- validation -----------------------------------------------------------------
 
 

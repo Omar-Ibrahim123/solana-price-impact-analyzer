@@ -258,19 +258,39 @@ def order_trees_end(header: MarketHeader) -> int:
     return HEADER_SIZE + PADDING_SIZE + MARKET_FIELDS_SIZE + trees
 
 
+def market_field(data: bytes, name: str) -> int:
+    """One of the six u64s after the padding, e.g. ``"order_sequence_number"``.
+
+    ``order_sequence_number`` is the market's counter: the number the *next*
+    new order will get. Event replay (replay.py) uses it to check that every
+    new order's number was handed out between two snapshots.
+    """
+    index = MARKET_FIELD_NAMES.index(name)
+    return struct.unpack_from("<Q", data, MARKET_FIELDS_OFFSET + 8 * index)[0]
+
+
+def decode_order_trees(
+    data: bytes, header: MarketHeader
+) -> tuple[list[PhoenixOrder], list[PhoenixOrder]]:
+    """``(bids, asks)``: every allocated, non-free node, unsorted, expired ones included.
+
+    ``decode_market`` filters these down to the live book; replay.py also needs
+    the expired ones, to tell "expired" apart from "removed".
+    """
+    off = MARKET_FIELDS_OFFSET + MARKET_FIELDS_SIZE  # the bids tree starts here
+    bids_len = TREE_PREFIX_SIZE + NODE_SIZE * header.bids_size
+    asks_len = TREE_PREFIX_SIZE + NODE_SIZE * header.asks_size
+    bids = decode_order_tree(data[off : off + bids_len], is_bids=True)
+    asks = decode_order_tree(data[off + bids_len : off + bids_len + asks_len])
+    return bids, asks
+
+
 def decode_market(data: bytes, slot: int = 0, now: int | None = None) -> PhoenixMarket:
     """Decode a raw Phoenix market account. Expired and empty orders are dropped."""
     now = int(time.time()) if now is None else now
     header = MarketHeader.decode(data)
-
-    off = HEADER_SIZE + PADDING_SIZE
-    taker_fee_bps = struct.unpack_from("<6Q", data, off)[3]
-    off += MARKET_FIELDS_SIZE
-
-    bids_len = TREE_PREFIX_SIZE + NODE_SIZE * header.bids_size
-    asks_len = TREE_PREFIX_SIZE + NODE_SIZE * header.asks_size
-    bids_raw = decode_order_tree(data[off : off + bids_len], is_bids=True)
-    asks_raw = decode_order_tree(data[off + bids_len : off + bids_len + asks_len])
+    taker_fee_bps = market_field(data, "taker_fee_bps")
+    bids_raw, asks_raw = decode_order_trees(data, header)
 
     def live(orders: list[PhoenixOrder]) -> list[PhoenixOrder]:
         return [o for o in orders if o.num_base_lots and not o.is_expired(slot, now)]
