@@ -26,6 +26,7 @@ Complexities (L = number of price levels on one side):
 - add_order that rests at an existing level: O(1); at a new level: O(log L)
 - add_order with IOC: only the matching cost below, never the resting step
 - cancel_order: O(1), plus O(log L) if it empties its level
+- reduce_order: O(1) (the order keeps its place in the queue)
 - matching m orders across k levels: O(m + k log L)
 """
 
@@ -216,6 +217,29 @@ class OrderBook:
         if not level:
             del book[order.price_ticks]
         return True
+
+    def reduce_order(self, order_id: int, new_size_lots: int) -> None:
+        """Shrink a resting order to ``new_size_lots`` without losing its queue place.
+
+        This is what a partial fill does to a maker, and what a "reduce size"
+        instruction does on Phoenix: the order stays where it is in its level's
+        FIFO list. (Making an order *bigger* would be unfair to the orders
+        queued behind it, so exchanges treat that as cancel + new order at the
+        back; this method refuses it.) O(1): the id map finds the node, and only
+        its size and the level's running total change.
+
+        Raises KeyError if the id isn't resting, ValueError unless
+        ``0 < new_size_lots < current size`` (to remove an order, cancel it).
+        """
+        order = self.orders[order_id]
+        if not 0 < new_size_lots < order.size_lots:
+            raise ValueError(
+                f"new size must be between 0 and {order.size_lots} (exclusive), got {new_size_lots}"
+            )
+        level = self._book(order.side)[order.price_ticks]
+        # Keep the level total in sync by hand, exactly like a partial fill in _match.
+        level.total_size -= order.size_lots - new_size_lots
+        order.size_lots = new_size_lots
 
     def market_order(
         self, side: Side, size_lots: int, limit_price: int | None = None

@@ -51,18 +51,21 @@ def test_parse_coinbase_rounds_size_down():
 
 
 def build_account(
-    bids: list[tuple[int, int, int]],
-    asks: list[tuple[int, int, int]],
+    bids: list[tuple[int, ...]],
+    asks: list[tuple[int, ...]],
     capacity: int = 8,
     free_bid_nodes: tuple[int, ...] = (),
     expiries: dict[int, tuple[int, int]] | None = None,
+    next_seq: int = 99,
 ) -> bytes:
     """Encode a minimal Phoenix market account, mirroring the layout phoenix.py decodes.
 
-    Orders are (price_ticks, sequence_number, base_lots). ``free_bid_nodes`` are
+    Orders are (price_ticks, sequence_number, base_lots), optionally with a
+    fourth item, the trader index (default 0). ``free_bid_nodes`` are
     0-based node indices in the bids tree to put on the free list (their data
     is left in place, as on-chain). ``expiries`` maps a bid node index to
-    (last_valid_slot, last_valid_unix_timestamp).
+    (last_valid_slot, last_valid_unix_timestamp). ``next_seq`` is the market's
+    order counter (the number the next new order would get).
     """
     expiries = expiries or {}
     header = bytearray(phoenix.HEADER_SIZE)
@@ -74,13 +77,13 @@ def build_account(
     struct.pack_into("<Q", header, 200, 1_000)  # tick = 1000 quote atoms = $0.001
     struct.pack_into("<I", header, 312, 1)
 
-    fields = struct.pack("<6Q", 1000, 1, 99, 5, 0, 0)  # taker fee 5 bps
+    fields = struct.pack("<6Q", 1000, 1, next_seq, 5, 0, 0)  # taker fee 5 bps
 
     def tree(orders, free_nodes=(), exp=None, flip_seq=False):
         exp = exp or {}
         nodes = bytearray(phoenix.NODE_SIZE * capacity)
         free_sorted = list(free_nodes)
-        for i, (price, seq, lots) in enumerate(orders):
+        for i, (price, seq, lots, *trader) in enumerate(orders):
             slot, ts = exp.get(i, (0, 0))
             next_free = 0
             if i in free_sorted:
@@ -88,7 +91,8 @@ def build_account(
                 next_free = free_sorted[k + 1] + 1 if k + 1 < len(free_sorted) else 0
             struct.pack_into("<4I", nodes, i * 64, next_free, 0, 0, 0)
             stored = ~seq & phoenix.U64_MASK if flip_seq else seq  # bids: !seq, as on-chain
-            struct.pack_into("<6Q", nodes, i * 64 + 16, price, stored, 0, lots, slot, ts)
+            trader_index = trader[0] if trader else 0
+            struct.pack_into("<6Q", nodes, i * 64 + 16, price, stored, trader_index, lots, slot, ts)
         bump = len(orders) + 1
         head = free_sorted[0] + 1 if free_sorted else 0
         alloc = struct.pack("<QII", capacity, bump, head)
