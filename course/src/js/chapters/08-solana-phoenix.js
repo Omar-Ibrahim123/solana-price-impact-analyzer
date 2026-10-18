@@ -309,10 +309,11 @@
     const { bytes, base, fields } = dec;
     const perRow = opts.bytesPerRow || (document.documentElement.clientWidth < 600 ? 8 : 16);
     const gid = OBZ.util.uid("phx");
+    const offDigits = Math.max(4, (base + bytes.length).toString(16).length);
     const cells = [];
     const grid = h("div", { class: "hex-grid", tabIndex: 0, attrs: { role: "grid", "aria-label": "Phoenix account bytes: use the arrow keys to move between bytes", "aria-readonly": "true" } });
     for (let r = 0; r * perRow < bytes.length; r++) {
-      const row = h("div", { class: "hex-row", attrs: { role: "row" } }, h("span", { class: "hex-off", attrs: { role: "rowheader" }, text: (base + r * perRow).toString(16).padStart(6, "0") }));
+      const row = h("div", { class: "hex-row", attrs: { role: "row" } }, h("span", { class: "hex-off", style: { width: "3.6em" }, attrs: { role: "rowheader" }, text: (base + r * perRow).toString(16).padStart(offDigits, "0") }));
       for (let c = 0; c < perRow; c++) {
         const i = r * perRow + c;
         if (i >= bytes.length) break;
