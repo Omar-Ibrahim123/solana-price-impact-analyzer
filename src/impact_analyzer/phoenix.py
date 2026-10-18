@@ -169,7 +169,7 @@ class MarketHeader:
 @dataclass(frozen=True, slots=True)
 class PhoenixOrder:
     price_in_ticks: int
-    order_sequence_number: int  # lower = older = higher time priority
+    order_sequence_number: int  # real (un-flipped) number: lower = older = fills first
     trader_index: int
     num_base_lots: int
     last_valid_slot: int  # 0 = no expiry
@@ -191,8 +191,17 @@ class PhoenixMarket:
     asks: list[PhoenixOrder]
 
 
-def decode_order_tree(buf: bytes) -> list[PhoenixOrder]:
+U64_MASK = (1 << 64) - 1
+
+
+def decode_order_tree(buf: bytes, is_bids: bool = False) -> list[PhoenixOrder]:
     """Read every live node of one order tree (bids or asks), unsorted.
+
+    Bids store their sequence number bit-flipped (``!seq`` in Rust). The tree
+    keeps each side sorted by its key (price, seq), and the program reads bids
+    from the high end. Flipping the bits makes an *older* bid (smaller seq) a
+    *larger* stored value, so at one price it still comes first. We undo the
+    flip here, so ``order_sequence_number`` always means the real number.
 
     Allocator header (bytes 16..32 of the tree): size u64, bump_index i32,
     free_list_head i32. ``bump_index`` is one past the last node ever
@@ -209,6 +218,8 @@ def decode_order_tree(buf: bytes) -> list[PhoenixOrder]:
             break
         registers = struct.unpack_from("<4i", buf, off)
         price, seq, trader, lots, slot, ts = struct.unpack_from("<6Q", buf, off + 16)
+        if is_bids:
+            seq = ~seq & U64_MASK  # un-flip (see docstring); Python ints need the mask
         nodes.append((registers[0], PhoenixOrder(price, seq, trader, lots, slot, ts)))
 
     free = free_node_indices(buf)
@@ -255,16 +266,15 @@ def decode_market(data: bytes, slot: int = 0, now: int | None = None) -> Phoenix
 
     bids_len = TREE_PREFIX_SIZE + NODE_SIZE * header.bids_size
     asks_len = TREE_PREFIX_SIZE + NODE_SIZE * header.asks_size
-    bids_raw = decode_order_tree(data[off : off + bids_len])
+    bids_raw = decode_order_tree(data[off : off + bids_len], is_bids=True)
     asks_raw = decode_order_tree(data[off + bids_len : off + bids_len + asks_len])
 
     def live(orders: list[PhoenixOrder]) -> list[PhoenixOrder]:
         return [o for o in orders if o.num_base_lots and not o.is_expired(slot, now)]
 
-    # Time priority: within a price, the lower sequence number is older and fills
-    # first. (phoenix-trade sorts bids by (price, seq) reversed, which puts the
-    # newest bid first within a price; harmless for display, wrong for a
-    # matching engine.)
+    # Time priority: within a price, the lower (un-flipped) sequence number is
+    # older and fills first. v1 sorted bids by the *stored* number, which put the
+    # newest bid first; checking real account bytes in v2 caught it.
     bids = sorted(live(bids_raw), key=lambda o: (-o.price_in_ticks, o.order_sequence_number))
     asks = sorted(live(asks_raw), key=lambda o: (o.price_in_ticks, o.order_sequence_number))
     return PhoenixMarket(header, taker_fee_bps, bids, asks)

@@ -76,7 +76,7 @@ def build_account(
 
     fields = struct.pack("<6Q", 1000, 1, 99, 5, 0, 0)  # taker fee 5 bps
 
-    def tree(orders, free_nodes=(), exp=None):
+    def tree(orders, free_nodes=(), exp=None, flip_seq=False):
         exp = exp or {}
         nodes = bytearray(phoenix.NODE_SIZE * capacity)
         free_sorted = list(free_nodes)
@@ -87,7 +87,8 @@ def build_account(
                 k = free_sorted.index(i)
                 next_free = free_sorted[k + 1] + 1 if k + 1 < len(free_sorted) else 0
             struct.pack_into("<4i", nodes, i * 64, next_free, 0, 0, 0)
-            struct.pack_into("<6Q", nodes, i * 64 + 16, price, seq, 0, lots, slot, ts)
+            stored = ~seq & phoenix.U64_MASK if flip_seq else seq  # bids: !seq, as on-chain
+            struct.pack_into("<6Q", nodes, i * 64 + 16, price, stored, 0, lots, slot, ts)
         bump = len(orders) + 1
         head = free_sorted[0] + 1 if free_sorted else 0
         alloc = struct.pack("<Qii", capacity, bump, head)
@@ -97,7 +98,7 @@ def build_account(
         bytes(header)
         + bytes(phoenix.PADDING_SIZE)
         + fields
-        + tree(bids, free_bid_nodes, expiries)
+        + tree(bids, free_bid_nodes, expiries, flip_seq=True)
         + tree(asks)
         + bytes(64)  # stand-in for the traders tree
     )
@@ -123,6 +124,17 @@ def test_decode_sorts_by_price_then_age():
         (149_900, 5),
     ]
     assert [o.price_in_ticks for o in m.asks] == [150_100, 150_200]
+
+
+def test_bid_sequence_numbers_are_stored_bit_flipped():
+    # Two bids at one price: seq 3 is older than seq 7, so it must fill first, even
+    # though its *stored* value (!3) is larger than !7. v1 got this backwards.
+    data = build_account(bids=[(150_000, 7, 1), (150_000, 3, 1)], asks=[(150_100, 8, 1)])
+    tree_start = phoenix.HEADER_SIZE + phoenix.PADDING_SIZE + phoenix.MARKET_FIELDS_SIZE
+    stored = struct.unpack_from("<Q", data, tree_start + phoenix.TREE_PREFIX_SIZE + 24)[0]
+    assert stored == ~7 & phoenix.U64_MASK  # what's really in the bytes
+    m = phoenix.decode_market(data, slot=0, now=0)
+    assert [o.order_sequence_number for o in m.bids] == [3, 7]
 
 
 def test_decode_skips_free_list_nodes():
