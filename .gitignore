@@ -9,3 +9,5 @@ data/*.json
 !docs/*.png
 data/*.sqlite
 data/*.sqlite-*
+data/*.log
+.claude/

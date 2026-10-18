@@ -167,8 +167,11 @@ class Collector:
                 written += 1
                 done = len(self.store.ticks(run.run_id))
                 log.info("%s", format_tick(tick, done, expected))
-            # Next slot strictly in the future; if this tick overran, skip what we missed.
-            next_ts = (math.floor(self.clock() / interval) + 1) * interval
+            # Normally the next slot starts in the future and we sleep until it. If this
+            # tick overran into a later slot, collect that slot now (a little late, and
+            # its started_at says so) rather than lose it; only slots we ran *past* are lost.
+            current = math.floor(self.clock() / interval) * interval
+            next_ts = current if current > tick_ts else current + interval
             missed = round((next_ts - tick_ts) / interval) - 1
             if missed > 0:
                 log.warning("tick overran: skipping %d slot(s)", missed)

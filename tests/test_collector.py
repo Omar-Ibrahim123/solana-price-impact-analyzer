@@ -207,7 +207,7 @@ def test_stop_request_ends_the_run_after_the_current_tick(store):
     assert len(store.ticks(run.run_id)) == 1  # the interrupted tick was still saved
 
 
-def test_overrun_skips_missed_slots(store):
+def test_overrun_collects_the_current_slot_late_and_skips_the_rest(store):
     clock = FakeClock(T0)
     collector = make_collector(store, clock, duration_s=1_500)
     original = collector.collect_tick
@@ -221,7 +221,10 @@ def test_overrun_skips_missed_slots(store):
     collector.collect_tick = slow_first_tick
     run = collector.start_run()
     collector.run(run)
-    assert [t["tick_ts"] - T0 for t in store.ticks(run.run_id)] == [0, 900, 1200]
+    # The tick ran until T0+650: slot 300 was run past (lost), slot 600 is collected late.
+    assert [t["tick_ts"] - T0 for t in store.ticks(run.run_id)] == [0, 600, 900, 1200]
+    late = store.ticks(run.run_id)[1]
+    assert late["started_at"] - late["tick_ts"] == 50
 
 
 def test_status_and_tick_line_mention_failures(store):
