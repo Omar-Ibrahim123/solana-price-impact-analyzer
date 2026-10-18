@@ -430,6 +430,12 @@
       def: "A tree-shaped structure that always keeps the smallest (or largest) item on top, cheap to add to and to pop the top from. It can't quickly find or remove an item from the middle, which is why order books use sorted maps instead.",
       related: ["sorted-map", "tree"],
     },
+    nanosecond: {
+      term: "Nanosecond", aliases: ["ns", "nanoseconds"], chapter: 6,
+      def: "A billionth of a second (0.000000001 s). Light travels about 30 cm in one nanosecond. A microsecond (µs) is 1,000 nanoseconds.",
+      project: "The benchmark times each engine call in nanoseconds: about 600 ns for a cancel, 1,100–1,700 ns for an add, 4,000 ns for a market order, in pure Python.",
+      related: ["big-o", "latency", "throughput"],
+    },
 
     // ---------------------------------------------------------------- 7. integers
     determinism: {
@@ -479,6 +485,16 @@
       term: "Lamport", aliases: ["lamports", "atom", "atoms", "base atoms"], chapter: 7,
       def: "The smallest unit of SOL: 0.000000001 SOL (one billionth). Every SOL amount on Solana is stored as a whole number of lamports; the general word for a token's smallest unit is an atom.",
       related: ["sol", "decimals"],
+    },
+    consensus: {
+      term: "Consensus", chapter: 7,
+      def: "How the computers running a blockchain agree on one shared history. Each validator re-runs the transactions and checks it got the same result as the others, so a program must give identical answers on every machine.",
+      related: ["validator", "determinism", "blockchain"],
+    },
+    "rounding-error": {
+      term: "Rounding error", aliases: ["rounding errors", "float drift"], chapter: 7,
+      def: "The tiny difference between a number and the closest value a computer can store, like writing 1/3 as 0.333. Each floating-point step can add one, and they pile up: adding 0.1 ten times gives 0.9999999999999999, not 1.",
+      related: ["floating-point", "integer", "determinism"],
     },
 
     // ---------------------------------------------------------------- 8. solana + bytes
