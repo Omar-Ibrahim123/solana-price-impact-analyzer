@@ -113,7 +113,8 @@ EXPLAIN: dict[str, str] = {
     "bids_size": "How many bid orders the bids tree has room for: the array is allocated at "
     "full size up front.",
     "asks_size": "How many ask orders the asks tree has room for.",
-    "num_seats": "How many traders hold a seat, the permission to place orders on this market.",
+    "num_seats": "How many trader seats the account has room for (its capacity, not how many "
+    "are taken). A seat is the permission to place resting orders on this market.",
     "base_decimals": "SOL has 9 decimals: 1 SOL = 1,000,000,000 lamports, the smallest unit.",
     "base_vault_bump": "A number used to derive the vault's address; not needed to read the book.",
     "base_mint": "The token being traded (base): this address is SOL.",
@@ -152,7 +153,8 @@ EXPLAIN: dict[str, str] = {
     "free_list_head": "The first deleted node waiting to be reused; each one points to the next.",
     "left": "Index of the left child: the subtree of orders whose key sorts before this one.",
     "free_next": "On the free list this first register is reused: it holds the index of the "
-    "next free node (0 ends the list).",
+    "next free node. The list ends at a value of 0 or at bump_index (the first never-used "
+    "slot); on SOL/USDC it ends at bump_index.",
     "right": "Index of the right child: the subtree of orders whose key sorts after this one.",
     "parent": "Index of this node's parent (0 for the root).",
     "color": "Red-black colour (0 = black, 1 = red): the rule that keeps the tree balanced.",

@@ -542,7 +542,7 @@
     account: {
       term: "Account (Solana)", aliases: ["accounts", "account"], chapter: 8,
       def: "Solana stores all data in accounts: fixed-size boxes of bytes, each with an address and an owner program that is allowed to change it. Anyone can read any account.",
-      project: "Phoenix keeps an entire market (header, bids, asks, trader seats) in one account of about 1.2 MB. We download its bytes and decode them ourselves.",
+      project: "Phoenix keeps an entire market (header, bids, asks, trader seats) in one account: 1,723,488 bytes (about 1.7 MB) for SOL/USDC. We download its bytes and decode them ourselves.",
       related: ["program", "address", "byte", "phoenix"],
     },
     program: {
