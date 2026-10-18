@@ -173,7 +173,7 @@ def headlines(
             + "; ".join(parts)
             + "."
             + (
-                f" For {', '.join(fee_dominated)} the fee is more than 5x the trading cost."
+                f" For {_join_and(fee_dominated)} the fee is more than 5x the trading cost."
                 if fee_dominated
                 else ""
             )
@@ -281,6 +281,11 @@ def headlines(
 
 def fmt_price(p: float | None) -> str:
     return "n/a" if p is None else f"${p:,.3f}"
+
+
+def _join_and(parts: list[str]) -> str:
+    """["A"] -> "A"; ["A", "B", "C"] -> "A, B and C"."""
+    return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
 
 
 def _join_vs(parts: list[str]) -> str:
