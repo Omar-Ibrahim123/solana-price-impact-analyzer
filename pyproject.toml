@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "impact-analyzer"
+version = "0.1.0"
+description = "Price impact of large SOL/USDC trades: Phoenix (Solana) order book vs. a centralized exchange."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.27",       # HTTP client for Solana RPC + exchange APIs (default timeouts, clean API)
+    "matplotlib>=3.8",   # impact-vs-size chart
+    "sortedcontainers>=2.4",  # SortedDict for price levels: O(log n) insert/delete, sorted iteration
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "ruff>=0.5",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra --strict-markers -m \"not network\""
+markers = [
+    "network: hits a live API (skipped by default; run with: pytest -m network)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
