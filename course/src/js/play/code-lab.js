@@ -46,7 +46,7 @@
 
   /** [{key, title, href, blurb, exercises}] in course order; each exercise id appears once. */
   function collect() {
-    const groups = [{ key: "warmup", title: "Warm-up", href: OBZ.router.href("learn", 2), blurb: "Spread and mid from chapter 2: a gentle first run of the editor and tests.", exercises: [DEMO] }];
+    const groups = [{ key: "warmup", title: "Warm-up", href: OBZ.router.href("learn", 2), blurb: "Spread and mid, the idea from chapter 2 (this exercise lives only here): a gentle first run of the editor and tests.", exercises: [DEMO] }];
     const seen = new Set([DEMO.id]);
     const take = (list) => (Array.isArray(list) ? list : []).filter((x) => x && x.id && !seen.has(x.id) && seen.add(x.id));
     for (const ch of OBZ.chapters.all()) {
@@ -130,7 +130,7 @@
       el.append(
         ui.prose(`Every coding exercise in the course, collected from the chapters. Each one runs your JavaScript in a sandbox with a time limit (an infinite loop can't freeze the page), checks it against tests, and offers three hints and a reference solution. Your code and your passes are saved in this browser and shared with the chapters, so an exercise passed here is passed there too.
 
-They follow the project: chapter 6 builds the engine of \`orderbook.py\` piece by piece, and chapter 7 converts Phoenix's integers the way \`phoenix.py\` does.`),
+They follow the project: chapter 6 builds the engine of \`orderbook.py\` piece by piece (exercises 1–5), chapter 7 converts Phoenix's integers the way \`phoenix.py\` does (6), chapter 9 writes the free-list allocator behind Phoenix's order trees (7), and chapter 10 prices a constant-product AMM swap the way \`amm.py\` does (8).`),
         progress,
         overview,
         ...sections);

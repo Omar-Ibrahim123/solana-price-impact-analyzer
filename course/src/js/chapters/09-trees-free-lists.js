@@ -194,7 +194,7 @@
   /* ------------------------------------------------------------------ code exercise */
   const FREE_LIST_EX = {
     id: "ex-free-list",
-    title: "Exercise · A free-list allocator",
+    title: "Exercise 7 · A free-list allocator",
     level: "medium",
     brief: `Phoenix keeps each side's orders in a fixed array of nodes numbered 1 to \`capacity\` (0 means "none"). \`createAllocator(capacity)\` is already written. Write the two functions that hand out and take back nodes:
 
@@ -341,7 +341,7 @@ A fixed array raises a new question: when an order leaves the book, what happens
           explain: "Node 4 was freed last, so it sits on top of the free list. The next bid after that takes node 2, and only then does the array use node 6 at the bump index. Try it in the widget above.",
           hint: "The free list is a pile: the node freed most recently is on top. Fresh nodes from the bump index are used only when the pile is empty.",
         }),
-        ui.ForProgrammers({ title: "Exercise · A free-list allocator in code", children: ui.CodeExercise(FREE_LIST_EX) }));
+        ui.ForProgrammers({ title: "Exercise 7 · A free-list allocator in code", children: ui.CodeExercise(FREE_LIST_EX) }));
     },
 
     quiz: [

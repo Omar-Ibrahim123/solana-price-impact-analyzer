@@ -46,7 +46,7 @@
   /* ------------------------------------------------------------------ the curve (See) */
   /**
    * An SVG plot of x·y = k with a draggable trade.
-   * opts: {usd: 1000, sol: 10, step, label}. Returns an element with .api.set(dx), .api.setPool(usd, sol).
+   * opts: {usd: 1000, sol: 10, step, label, onChange(dx)}. Returns an element with .api.set(dx), .api.setPool(usd, sol).
    */
   function curveExplorer(ctx, opts = {}) {
     const { ui } = ctx;
@@ -83,7 +83,7 @@
       for (let i = 0; i <= 5; i++) {
         const xv = x0 * 0.5 * i, yv = y0 * 0.5 * i;
         axes.appendChild(h("text", { x: X(xv), y: B + 18, "text-anchor": "middle", class: "t-muted", text: fmt.usdCompact(xv) }));
-        if (i > 0) axes.appendChild(h("text", { x: L - 6, y: Y(yv) + 4, "text-anchor": "end", class: "t-muted", text: fmt.num(yv, 2) }));
+        if (i > 0) axes.appendChild(h("text", { x: L - 6, y: Y(yv) + 4, "text-anchor": "end", class: "t-muted", text: yv >= 1000 ? fmt.num(yv / 1000, 1) + "k" : fmt.num(yv, yv >= 10 ? 0 : 2) }));
         if (i > 0) axes.appendChild(h("line", { class: "line line-dash", style: "opacity: 0.25", x1: L, x2: R, y1: Y(yv), y2: Y(yv) }));
       }
       axes.appendChild(h("text", { x: (L + R) / 2, y: B + 40, "text-anchor": "middle", class: "t-muted", text: "x: dollars (USDC) in the pool" }));
@@ -100,6 +100,7 @@
       startText.setAttribute("x", X(x0) - 10); startText.setAttribute("y", Y(y0) + 22); startText.setAttribute("text-anchor", "end");
     }
 
+    let quiet = false;
     function set(v, fromSlider) {
       dx = clamp(v, 0, maxDx());
       const k = x0 * y0, x1 = x0 + dx, y1 = k / x1, out = y0 - y1;
@@ -120,6 +121,7 @@
       handle.setAttribute("aria-valuenow", String(Math.round(dx)));
       handle.setAttribute("aria-valuetext", `Spend ${fmt.usd(dx, 0)}, receive ${fmt.num(out, 4)} SOL`);
       if (!fromSlider) slider.api.set(dx);
+      if (opts.onChange && !quiet) opts.onChange(dx);
       clear(readout).append(
         h("p", null, ui.rich(`Spend **${fmt.usd(dx, 0)}** → receive **${fmt.num(out, 4)} SOL**: y − k ÷ (x + dx) = ${fmt.num(y0, 4)} − ${fmt.num(k, 0)} ÷ ${fmt.num(x1, 2)}.`)),
         h("p", null, ui.rich(`Average price **${fmt.usd(avg)}** = ${fmt.usd(dx, 0)} ÷ ${fmt.num(out, 4)} SOL, against a spot price of ${fmt.usd(spot0)} before. Spot after the trade: **${fmt.usd(spot1)}**.`)),
@@ -148,11 +150,11 @@
       else if (e.key === "End") { e.preventDefault(); set(maxDx()); }
     });
 
-    drawAxes(); set(dx);
+    drawAxes(); quiet = true; set(dx); quiet = false;
     const el = h("div", { class: "stack" }, svg, slider, readout);
     el.api = {
-      set: (v) => set(v),
-      setPool(usd, sol) { x0 = usd; y0 = sol; dx = Math.min(dx, maxDx()); drawAxes(); set(dx); },
+      set: (v) => { quiet = true; set(v); quiet = false; },
+      setPool(usd, sol) { x0 = usd; y0 = sol; dx = Math.min(dx, maxDx()); drawAxes(); quiet = true; set(dx); quiet = false; },
     };
     return el;
   }
@@ -337,7 +339,7 @@
   /* ------------------------------------------------------------------ code exercise */
   const SWAP_EX = {
     id: "ex-amm-swap",
-    title: "Exercise · A constant-product swap",
+    title: "Exercise 8 · A constant-product swap",
     level: "easy",
     brief: `A pool is \`{ usd, sol }\`. Write \`swap(pool, usdIn, feeBps)\` for someone buying SOL with \`usdIn\` dollars. Return \`{ solOut, avgPrice, pool }\` where \`pool\` is a **new** object for the pool after the trade (don't change the one you were given).
 
@@ -406,7 +408,7 @@ The fee works as in \`amm.py\`: only \`usdIn × (1 − feeBps / 10,000)\` counts
       const ex = ctx.section("explain", "A pool, a product and a curve");
       ex.append(
         ui.prose(`
-An order book needs people to post orders. An [[amm|AMM]] (automated market maker) doesn't. It is a [[liquidity-pool|pool]] holding two tokens, say x dollars of USDC and y SOL, and one rule: after every trade, x times y must still equal the same number, k. That is the [[constant-product|constant-product]] rule, [[xyk|x·y = k]]. You don't trade with another person; you trade with the pool, and the formula sets the price.
+An order book needs people to post orders. An [[amm|AMM]] (automated market maker) doesn't. It is a [[liquidity-pool|pool]] holding two tokens, say x dollars of USDC and y SOL, and one rule: after every trade, x times y must still equal the same number, k. That is the [[constant-product|constant-product]] rule, [[xyk|x·y = k]]. You don't trade with another person; you trade with the pool, and the formula sets the price. The tokens in the pool come from [[liquidity-provider|liquidity providers]], who deposit them to earn a small fee on every trade, much like an exchange's [[taker-fee|taker fee]]. (The examples below leave the fee out to keep the arithmetic clean.)
 
 **Worked example.** A pool holds **10 SOL and $1,000**, so k = 1,000 × 10 = 10,000. Its [[spot-price|spot price]] is the ratio x ÷ y = $100. You spend $100:
 
@@ -458,7 +460,7 @@ Two newer ideas matter on Solana. A [[prop-amm|prop AMM]] belongs to one market-
       drawNotes();
       ctx.onData(drawNotes);
       tr.append(notesBox);
-      tr.append(ui.ForProgrammers({ title: "Exercise · A constant-product swap in code", children: ui.CodeExercise(SWAP_EX) }));
+      tr.append(ui.ForProgrammers({ title: "Exercise 8 · A constant-product swap in code", children: ui.CodeExercise(SWAP_EX) }));
     },
 
     quiz: [

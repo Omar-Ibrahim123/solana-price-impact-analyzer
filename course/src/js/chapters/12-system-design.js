@@ -16,8 +16,8 @@
   const STAGES = [
     {
       id: "fetch", name: "Fetch", modules: "collector.py · venues.py · net.py",
-      what: "Every 5 minutes, on the clock (12:00, 12:05, …), the [[collector]] starts one thread per venue and fetches Phoenix's market account over Solana [[rpc|RPC]], Kraken's and Coinbase's books from their [[api|APIs]], and the current Solana [[slot]], all at the same moment. Then it asks [[jupiter|Jupiter]] for 48 quotes (6 routes × 4 sizes × buy and sell), paced at 0.45 requests per second to stay inside the free tier's 5 requests per 10 seconds.",
-      why: "**Threads, so the books are simultaneous.** Fetched one after another, a slow RPC call would make Kraken's book seconds older than Phoenix's, and the comparison would be unfair. **Each venue is isolated**: an error becomes a failed row, never a crashed round. **Retries live in one place**, `net.py`: timeouts, HTTP 429 and 5xx are retried up to 3 times with [[exponential-backoff|exponential backoff]] and jitter, honouring `Retry-After` and Jupiter's `x-ratelimit-reset`. Other 4xx errors, like Jupiter's \"no route found\", are not retried: asking again gives the same answer.",
+      what: "Every 5 minutes, on the clock (12:00, 12:05, …), the [[collector]] starts one [[single-threaded|thread]] (a line of work the computer runs side by side with others) per venue and fetches Phoenix's market account over Solana [[rpc|RPC]], Kraken's and Coinbase's books from their [[api|APIs]], and the current Solana [[slot]], all at the same moment. Then it asks [[jupiter|Jupiter]] for 48 quotes (6 routes × 4 sizes × buy and sell), paced at 0.45 requests per second to stay inside the free tier's 5 requests per 10 seconds.",
+      why: "**Threads, so the books are simultaneous.** Fetched one after another, a slow RPC call would make Kraken's book seconds older than Phoenix's, and the comparison would be unfair. **Each venue is isolated**: an error becomes a failed row, never a crashed round. **Retries live in one place**, `net.py`: timeouts, HTTP 429 (too many requests) and 5xx (the server's own errors) are retried up to 3 times with [[exponential-backoff|exponential backoff]] plus a little randomness (jitter), honouring `Retry-After` and Jupiter's `x-ratelimit-reset`. Other 4xx errors, like Jupiter's \"no route found\", are not retried: asking again gives the same answer.",
     },
     {
       id: "normalize", name: "Normalize", modules: "snapshot.py · phoenix.py · cex.py",
@@ -27,7 +27,7 @@
     {
       id: "store", name: "Store", modules: "store.py · SQLite",
       what: "Each round is written in **one transaction**: the round row, one row per venue (ok or failed, attempts, latency, error), each book as compressed JSON, Phoenix's raw account bytes, and every Jupiter quote with its route. `store.py` is the only module that writes SQL.",
-      why: "**[[sqlite|SQLite]] over Parquet.** It ships with Python; a round lands completely or not at all, so a crash never leaves half a round; a unique key on (run, round time) makes restarts safe; and `status` and `report` are plain SQL queries. Parquet shines for columnar scans over millions of rows, which a day of 5-minute rounds isn't. **Raw bytes are kept** so a decoder bug found later can be fixed and the whole day re-decoded, instead of being baked into the data.",
+      why: "**[[sqlite|SQLite]] over Parquet.** It ships with Python; a round lands completely or not at all, so a crash never leaves half a round; a unique key on (run, round time) makes restarts safe; and `status` and `report` are plain SQL queries. Parquet (a file format that stores data column by column) shines when you scan millions of rows for a few columns, which a day of 5-minute rounds isn't. **Raw bytes are kept** so a decoder bug found later can be fixed and the whole day re-decoded, instead of being baked into the data.",
     },
     {
       id: "engine", name: "Engine", modules: "orderbook.py · convert.py · impact.py",
@@ -208,7 +208,7 @@
         t += JUP_GAP;
         if (interrupt === "ctrlc") { stopped = "ctrlc"; add(t, "Ctrl+C: \"stopping after this round\". The quote loop stops early; the quotes already taken are kept"); }
         if (interrupt === "kill") { stopped = "kill"; add(t, "Power cut: the process dies in the middle of the quote loop"); }
-        else add(t, `Jupiter: ${okQ} of ${quotes} quotes OK`);
+        else add(t, `Jupiter: ${okQ} of ${quotes} quotes OK${quotes - okQ === NO_ROUTE ? " (the other 4: SolFi has no route at $100K and $1M, buying or selling)" : ""}`);
       } else if (interrupt !== "none") {
         stopped = interrupt;
         add(t, interrupt === "kill" ? "Power cut: the process dies before the round is written" : "Ctrl+C: \"stopping after this round\"");
@@ -354,19 +354,19 @@ The interesting station is the first one. The [[collector]] was built to run for
 The collector's rules:
 
 - **Fetch every venue at the same moment**, one thread each, so no book is seconds older than another.
-- **Isolate failures.** If Kraken times out, the round still stores Phoenix and Coinbase, plus a Kraken row that says "failed after 4 attempts" and why. That is [[fault-isolation|fault isolation]].
+- **Isolate failures.** If Kraken times out, the round still stores Phoenix and Coinbase, plus a Kraken row that says "failed after 4 attempts" (1 try + 3 retries) and why. That is [[fault-isolation|fault isolation]].
 - **Retry politely**: wait 1, 2, then 4 seconds with a little randomness ([[exponential-backoff|exponential backoff]]), and if a server says "Retry-After: 2", wait exactly that long.
 - **Write each round in one [[db-transaction|database transaction]]**, so a crash leaves the whole round or none of it.
 - **Resume after a restart**: \`collect --resume\` carries on with the same run and skips rounds already stored. Ctrl+C finishes the current round first.
-- **Protect the run from its author.** The run used its own copy of the code (a pinned git worktree), so edits made during the day couldn't change it halfway.`),
+- **Protect the run from its author.** The run used its own copy of the code (a pinned git worktree: a separate folder holding the code at one fixed version), so edits made during the day couldn't change it halfway.`),
         ui.Callout({
           kind: "project", open: true, title: "SQLite, not Parquet: the reasoning",
-          body: "[[sqlite|SQLite]] is built into Python, survives a crash mid-write, enforces \"one row per venue per round\" with a unique key, and answers `status` and `report` with plain SQL. A day is 288 rounds, an estimated 15 MB. Parquet, a columnar file format, wins when you scan millions of rows for a few columns. At exchange scale the answer flips: append to a log, then compact it into Parquet files split by day and market.",
+          body: "[[sqlite|SQLite]] is built into Python, survives a crash mid-write, enforces \"one row per venue per round\" with a unique key, and answers `status` and `report` with plain SQL. A day is 288 rounds, an estimated 15 MB. Parquet, a file format that stores data column by column, wins when you scan millions of rows for a few columns. At exchange scale the answer flips: append to a log, then compact it into Parquet files split by day and market.",
         }),
         ui.prose(`
 **What changes at exchange scale?** This project matches one book at a time, in Python, and nobody is waiting for the answer. A real exchange matches thousands of books for thousands of traders, and every microsecond counts:
 
-- **[[sharding|Shard]] by market.** Each market gets its own [[single-threaded|single-threaded]] engine. Markets share nothing, so you add machines, not locks.
+- **[[sharding|Shard]] by market.** Each market gets its own [[single-threaded|single-threaded]] engine. Markets share nothing, so you add machines, not locks (the rules that stop two threads changing the same data at once, and make them wait).
 - **A [[sequencer]] decides the order.** Before matching, every order gets a place in one agreed sequence and is written to a log. Replaying the log rebuilds the book exactly: [[determinism]] doubles as crash recovery.
 - **[[latency|Latency]] budgets.** The collector thinks in seconds; a matching engine in microseconds. Nothing slow (disk, network, memory allocation) is allowed on the path an order takes.
 - **Compiled languages and fixed memory.** Our pure-Python engine handles about 758,000 events per second; Rust or C++ with preallocated arrays is far faster.
@@ -402,6 +402,16 @@ The collector's rules:
 The fix, "collect a round late instead of skipping it" (what this simulator does), was committed five minutes after the run started. The run was deliberately left on its pinned commit, so every round of the day is collected by the same code.`,
       }),
       ui.Callout({
+        kind: "real", title: "How the project tests itself",
+        body: `Three ideas do most of the work, and the interview page asks about all of them:
+
+- **Property-based testing.** Instead of writing each test case by hand, the Hypothesis library makes up thousands of random sequences of adds, cancels and market orders. When one fails, it shrinks it to the shortest sequence that still fails.
+- **Differential testing.** Each random sequence also runs through a deliberately simple reference model: one flat list of orders, sorted on every match. It is far too slow for real use, but easy to check by eye. After every step the fast engine and the model must report identical fills.
+- **Invariants.** Rules that must hold after every step: the book is never crossed, the linked lists are intact, the id map matches the book exactly, and no lots appear or vanish.
+
+And to test the tests, \`python -m benchmarks.mutation_check\` plants 8 realistic bugs in the engine, one at a time (for example, letting a partial fill lose its place). The tests catch all 8.`,
+      }),
+      ui.Callout({
         kind: "note", title: "What the model leaves out",
         body: "This simulator follows the collector's rules (`collector.py`, `net.py`) but doesn't run them: latencies are typical values from the real log, and the random part of each backoff wait is left out. The real tests do run the code, with a fake clock and fake fetchers: one venue failing, a 429 with `Retry-After`, resume after a kill, and Ctrl+C (`tests/test_collector.py`, `tests/test_net.py`).",
       }));
@@ -412,9 +422,9 @@ The fix, "collect a round late instead of skipping it" (what this simulator does
         q: "During one round, Kraken times out on every attempt. What does the database hold for that round?",
         options: [
           { text: "Nothing: one failed venue makes the collector throw the whole round away", why: "That would lose two good books because of one bad one. Each venue is fetched in its own thread and its errors are caught, so the round is stored without Kraken." },
-          { text: "Phoenix's and Coinbase's books, a Kraken row marked failed with its error and 4 attempts, and a reference mid from Coinbase alone", why: "Right. Failures are isolated and recorded, not hidden. The reference mid is the mean of whichever exchange mids are available, here Coinbase's only." },
+          { text: "The other two books, a failed Kraken row, and a Coinbase-only reference mid", why: "Right. Failures are isolated and recorded, not hidden. The reference mid is the mean of whichever exchange mids are available, here Coinbase's only." },
           { text: "All three books: the collector waits as long as it takes for Kraken to answer", why: "The collector never waits forever: each request has a 15-second timeout and there are 3 retries. After that it records the failure and moves on." },
-          { text: "Kraken's book from the previous round, copied forward so the data has no holes", why: "Copying old data forward would make Kraken look like it had a book it didn't show. The row says honestly that the fetch failed." },
+          { text: "Kraken's book from the previous round, copied forward to fill the hole", why: "Copying old data forward would make Kraken look like it had a book it didn't show. The row says honestly that the fetch failed." },
         ],
         answer: 1,
       },
@@ -432,8 +442,8 @@ The fix, "collect a round late instead of skipping it" (what this simulator does
         q: "Why can't Solana run two trades on the **same** Phoenix market at the same time, side by side?",
         options: [
           { text: "Solana's validators can only run one transaction at a time", why: "Solana does run transactions in parallel, but only when neither writes an account the other uses." },
-          { text: "Both write the market account, and Solana runs two transactions in parallel only if neither writes an account the other uses", why: "Right. Phoenix keeps the whole book in one account, so every trade on that market must wait its turn. Trades on different markets can run side by side, which is sharding by market." },
-          { text: "Phoenix allows only one trade per slot", why: "Many trades can land in the same slot; they just run one after another when they touch the same market account." },
+          { text: "Both write the same market account, so they must take turns", why: "Right. Phoenix keeps the whole book in one account, so every trade on that market must wait its turn. Trades on different markets can run side by side, which is sharding by market." },
+          { text: "Phoenix allows only one trade in each slot", why: "Many trades can land in the same slot; they just run one after another when they touch the same market account." },
           { text: "Floating-point rounding would make parallel trades disagree", why: "Phoenix uses integers, so rounding isn't the issue. The limit comes from two transactions writing the same account." },
         ],
         answer: 1,

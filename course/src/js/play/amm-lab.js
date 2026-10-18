@@ -46,19 +46,23 @@
         alt: `Impact against trade size for an x·y = k pool holding ${fmt.usdCompact(usd)} per side at $${price}, fee ${fee} bps. Both axes are logarithmic: impact grows in proportion to size.`,
       }));
     }
-    function all() { if (curve) curve.api.setPool(usd, usd / price); trade(); chart(); }
-    curve = OBZ.lessons.amm.curveExplorer(ctx, { usd, sol: usd / price, dx: usd * 0.25 });
+    // The curve and the calculator show the same trade: moving either one moves the other.
+    let sizeSlider = null;
+    function syncCurve() { if (curve && side === "buy") curve.api.set(Math.min(size, usd * 1.5)); }
+    function all() { if (curve) curve.api.setPool(usd, usd / price); syncCurve(); trade(); chart(); }
+    curve = OBZ.lessons.amm.curveExplorer(ctx, { usd, sol: usd / price, dx: size, onChange: (dx) => { if (dx > 0) { size = dx; if (sizeSlider) sizeSlider.api.set(dx); side = "buy"; if (sideSeg) sideSeg.api.set("buy"); trade(); } } });
     curveBox.appendChild(curve);
     const controls = h("div", { class: "grid-2" },
       ui.Slider({ label: "Pool size (dollars per side)", min: 1e4, max: 1e8, log: true, value: usd, format: fmt.usdCompact, onInput: (v) => { usd = v; all(); } }),
       ui.Slider({ label: "Price ($ per SOL)", min: 1, max: 1000, log: true, value: price, format: (v) => fmt.usd(v), onInput: (v) => { price = v; all(); } }),
       ui.Slider({ label: "Fee (bps)", min: 0, max: 100, step: 1, value: fee, format: (v) => v + " bps", onInput: (v) => { fee = v; trade(); chart(); } }),
-      ui.Slider({ label: "Trade size", min: 100, max: 1e7, log: true, value: size, format: fmt.usdCompact, onInput: (v) => { size = v; trade(); } }));
+      sizeSlider = ui.Slider({ label: "Trade size", min: 100, max: 1e7, log: true, value: size, format: fmt.usdCompact, onInput: (v) => { size = v; syncCurve(); trade(); } }));
+    const sideSeg = ui.Segmented({ label: "Side", value: side, options: [{ value: "buy", label: "▲ Buy SOL" }, { value: "sell", label: "▼ Sell SOL" }], onChange: (v) => { side = v; syncCurve(); trade(); } });
     trade(); chart();
     return h("div", { class: "stack" },
-      ui.p("The curve uses the pool's size and price but no fee. The calculator and the chart below include the fee, which stays in the pool, as in `amm.py`."),
+      ui.p("The curve and the calculator show the same buy: drag either one. The curve uses the pool's size and price but no fee; the calculator and the chart below include the fee, which stays in the pool, as in `amm.py`. (The curve draws buys only.)"),
       controls,
-      ui.Segmented({ label: "Side", value: side, options: [{ value: "buy", label: "▲ Buy SOL" }, { value: "sell", label: "▼ Sell SOL" }], onChange: (v) => { side = v; trade(); } }),
+      sideSeg,
       stats, curveBox, chartBox);
   }
 

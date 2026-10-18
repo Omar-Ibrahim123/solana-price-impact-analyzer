@@ -787,7 +787,7 @@
     },
     phoenix: {
       term: "Phoenix", chapter: 8,
-      def: "An order-book exchange that runs entirely on Solana, built by Ellipsis Labs. A market's whole book lives in one Solana account, and trades are matched and settled inside the same transaction.",
+      def: "An exchange with an order book that runs on the Solana blockchain instead of on a company's own computers. It is built by Ellipsis Labs. Chapter 8 shows how it keeps a whole market in one place.",
       project: "We read the SOL/USDC market account directly and decode its bytes with our own code.",
       related: ["ellipsis-labs", "crankless", "account", "dex", "red-black-tree"],
     },
