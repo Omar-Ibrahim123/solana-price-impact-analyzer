@@ -481,13 +481,13 @@
       const ex = ctx.section("explain", "Lockers, keys and a 400 ms clock");
       ex.append(
         ui.prose(`
-[[solana|Solana]] is a [[blockchain]]: thousands of computers keep identical copies of the same data. That data lives in [[account|accounts]]. An account is a row of [[byte|bytes]] with an [[address]] and an owner. Think of a locker with a glass door: anyone can look inside, but only one [[program]] holds the key to change what's in it.
+[[solana|Solana]] is a [[blockchain]]: many independent computers keep identical copies of the same data. That data lives in [[account|accounts]]. An account is a row of [[byte|bytes]] with an [[address]] and an owner. Think of a locker with a glass door: anyone can look inside, but only one [[program]] holds the key to change what's in it.
 
 Programs are the code. They hold no data of their own. To do anything, you send a [[transaction]] that names a program, lists every account it will read or write, and asks for an [[instruction]] such as "place a bid". The program reads those accounts, changes their bytes, and either all of it happens or none of it does.
 
 Time on Solana is counted in [[slot|slots]] of about 400 milliseconds. In each slot one [[validator]] packs transactions into a block, and every other validator runs the same programs on the same bytes and must get exactly the same bytes out. That is the [[determinism]] from [chapter 7](#/learn/7), and it is why prices and sizes are stored as whole numbers.`),
         ui.prose(`
-[[phoenix|Phoenix]], built by [[ellipsis-labs|Ellipsis Labs]], keeps an entire market in **one account**. On SOL/USDC that account is 1,723,488 bytes (about 1.7 MB): a [[header]], the bids and the asks, each a [[red-black-tree|red-black tree]] with room for 4,096 orders, and a tree of [[seat|trader seats]] holding every trader's balances. The space is reserved in advance, so the account never grows.
+[[phoenix|Phoenix]], built by [[ellipsis-labs|Ellipsis Labs]], keeps an entire market in **one account**. On SOL/USDC that account is 1,723,488 bytes (about 1.7 MB): a [[header]], the bids and the asks, each a [[red-black-tree|red-black tree]] with room for 4,096 orders, and a tree of [[seat|trader seats]] holding every trader's balances. All of that space is reserved when the market is created, so the account doesn't grow as orders arrive.
 
 Because the book and the balances sit in the same place, one transaction can do the whole trade. A taker's order is matched against the book, the makers' seats are credited, and the taker's tokens move in and out of the market's [[vault|vaults]], all at once. Nothing is left over for later, which is why Phoenix is called [[crankless]]. Older Solana order books such as Serum matched first and left the results in a queue; someone had to send separate "crank" transactions to finish settling.`),
         ui.Callout({
@@ -497,7 +497,7 @@ Because the book and the balances sit in the same place, one transaction can do 
         ui.prose(`
 To see the book, this project asks any Solana [[rpc|RPC]] node for the account's bytes with one call, \`getAccountInfo\`. The answer is the bytes (in [[base64]]) and the slot they were read at. Then \`phoenix.py\` [[decoding|decodes]] them with no Phoenix library at all: it knows each field's [[offset]] and size, and reads it with Python's \`struct\` module.
 
-Most fields are [[u64]] numbers: 8 bytes each, stored [[little-endian]], which means the smallest byte comes first. We write bytes in [[hex]], two digits each. The bids size at offset 16 is stored as \`00 10 00 00 00 00 00 00\`. Read right to left, that is hex \`1000\`, which is 16 × 256 = **4,096**.`),
+Most fields are [[u64]] numbers: 8 bytes each, stored [[little-endian|little-endian]], which means the smallest byte comes first. We write bytes in [[hex]], two digits each. The bids size at offset 16 is stored as \`00 10 00 00 00 00 00 00\`. Read right to left, that is hex \`1000\`, which is 16 × 256 = **4,096**.`),
         ui.Callout({
           kind: "project", title: "In this project: phoenix.py",
           body: "`struct.unpack_from(\"<Q\", data, 16)` reads that number: `<` means little-endian and `Q` means an unsigned 8-byte integer. The collector stores only `data[:order_trees_end(header)]`, the first 525,232 bytes (header plus both trees), because the 1.2 MB of trader seats isn't needed to rebuild the book.",

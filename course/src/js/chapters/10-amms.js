@@ -389,7 +389,7 @@ Two newer ideas matter on Solana. A [[prop-amm|prop AMM]] belongs to one market-
           body: `They come from one 5-minute tick, so treat them as a snapshot, not a ranking.
 
 - Jupiter's **best route** mostly ran through prop AMMs (Kipseli, BisonFi, TesseraV, GoonFi V2), with Manifest (another on-chain order book), JupLend AMM and Whirlpool on some legs. It cost under 11 bps at every size, buying or selling.
-- **Phoenix via Jupiter** was expensive here because Phoenix's SOL/USDC book was thin at that moment: the collector's own decode of the same slot shows a best ask of $104.10 and a best bid of $89.04. Jupiter's Phoenix-only quote for $1K ($104.12 to buy, $89.01 to sell) is within about half a basis point of that book plus the 2 bps taker fee: a useful check that our decoder and Jupiter read the same bytes.
+- **Phoenix via Jupiter** was expensive here because Phoenix's SOL/USDC book was very wide at that moment: the collector's own decode at the same tick shows a best ask of $104.10 and a best bid of $89.04. Jupiter's Phoenix-only quote for $1K ($104.12 to buy, $89.01 to sell) is within about half a basis point of that book plus the 2 bps taker fee: a useful check that our decoder and Jupiter read the same bytes.
 - **SolFi** quoted $1K and $10K but had no route at $100K or $1M in this tick.`,
         }));
       }
