@@ -75,7 +75,33 @@ Fills always print at the resting (maker) order's price; a partially filled make
 at the head of the queue. Prices and sizes are integers end to end, as on-chain programs require
 (every validator must compute the same result, which floats don't guarantee).
 
-`python -m benchmarks.bench_engine` replays 1M random adds, cancels and market orders through it.
+`tests/test_engine_properties.py` uses Hypothesis to run thousands of random sequences of adds,
+cancels and market orders through the engine and through a deliberately naive reference model, and
+requires identical fills after every step, plus invariants: never crossed, linked lists intact,
+lots conserved (`HYPOTHESIS_PROFILE=thorough pytest` for 5,000 sequences).
+
+`python -m benchmarks.bench_engine --markdown` replays 1M random adds, cancels and market orders
+(seed 0) and times each call:
+
+Intel64 Family 6 Model 183 Stepping 1, GenuineIntel; Python 3.14.6 (Windows); timer resolution
+100 ns, so percentiles are multiples of it.
+
+Throughput: **757,703 events/s** (1,320 ns/event mean).
+
+| Operation | Count | Mean (ns) | p50 (ns) | p99 (ns) |
+| --- | ---: | ---: | ---: | ---: |
+| add, rests at an existing level | 416,248 | 1,129 | 1,100 | 1,800 |
+| add, creates a new level | 183,656 | 1,711 | 1,600 | 2,800 |
+| cancel, order is resting | 151,221 | 592 | 600 | 1,000 |
+| cancel, order already filled (no-op) | 149,195 | 113 | 100 | 200 |
+| market order | 99,680 | 4,040 | 3,800 | 10,100 |
+
+Cancel is the cheapest real operation because the id map jumps straight to the node and the linked
+list unlinks it in O(1); a cancel that lost the race to a fill is a single dict miss. A new price
+level costs about 600 ns more than joining an existing one (the O(log L) `SortedDict` insert plus a
+new `PriceLevel`), and market orders have the long tail because a large one sweeps several levels.
+All numbers are pure Python and include method-call overhead, so they show relative costs, not what
+a compiled Rust engine would do.
 
 ## Run it
 
