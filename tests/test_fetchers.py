@@ -86,12 +86,12 @@ def build_account(
             if i in free_sorted:
                 k = free_sorted.index(i)
                 next_free = free_sorted[k + 1] + 1 if k + 1 < len(free_sorted) else 0
-            struct.pack_into("<4i", nodes, i * 64, next_free, 0, 0, 0)
+            struct.pack_into("<4I", nodes, i * 64, next_free, 0, 0, 0)
             stored = ~seq & phoenix.U64_MASK if flip_seq else seq  # bids: !seq, as on-chain
             struct.pack_into("<6Q", nodes, i * 64 + 16, price, stored, 0, lots, slot, ts)
         bump = len(orders) + 1
         head = free_sorted[0] + 1 if free_sorted else 0
-        alloc = struct.pack("<Qii", capacity, bump, head)
+        alloc = struct.pack("<QII", capacity, bump, head)
         return bytes(16) + alloc + bytes(nodes)
 
     return (

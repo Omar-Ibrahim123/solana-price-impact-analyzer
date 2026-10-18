@@ -242,13 +242,15 @@ def execute_ioc(
     reference_price: float | None = None,
     removed_lots: int = 0,
 ) -> IocResult:
-    """Send one IOC of ``lots`` against ``snapshot``, limit ``limit_bps`` from its mid.
+    """Send one IOC of ``lots`` against ``snapshot``, limit ``limit_bps`` from a price.
 
     The building block of both ``simulate_ioc`` and ``twap``. ``removed_lots``
     is liquidity taken off the best levels first (see the resilience model).
-    The limit is anchored to the snapshot's own mid *before* that removal: it is
-    price protection against junk quotes, set from the market we saw, and keeping
-    it fixed is what makes resilience=0 on identical snapshots equal one order.
+    The limit is centred on ``reference_price`` (default: the snapshot's own mid),
+    fixed *before* that removal: it is price protection against junk quotes, set
+    from the market we saw, and keeping it fixed is what makes resilience=0 on
+    identical snapshots equal one order. Pass the reference mid for a lopsided
+    book like Phoenix's, whose own mid can sit far from the market.
     """
     taker = _taker(side)
     if lots < 0 or removed_lots < 0:
@@ -257,7 +259,7 @@ def execute_ioc(
     if mid is None:
         raise ValueError(f"{snapshot.venue}: one-sided book, no mid to set a limit from")
     reference = mid if reference_price is None else reference_price
-    limit_ticks = protection_limit(snapshot, taker, mid, limit_bps / 10_000)
+    limit_ticks = protection_limit(snapshot, taker, reference, limit_bps / 10_000)
 
     levels = snapshot.asks if taker is Side.BID else snapshot.bids
     reachable = _reachable(levels, taker, limit_ticks, lots, removed_lots)
@@ -572,14 +574,20 @@ def load_series(
 
     ``band`` trims each book to that fraction of its mid. Pass something a bit
     wider than the IOC limit: nothing beyond the limit can fill, and trimming
-    keeps hundreds of Coinbase books small in memory.
+    keeps hundreds of Coinbase books small in memory. The band is widened by the
+    gap between the book's own mid and the reference mid, so it covers an IOC
+    limit centred on either one.
     """
     run = _pick_run(store, run_id)
     ref = {t["tick_id"]: t["ref_mid"] for t in store.ticks(run.run_id)}
     steps = []
     for s in store.snapshots(venue=venue, run_id=run.run_id):
         book = s.book()
-        steps.append(Step(s.tick_ts, book.trimmed(band) if band else book, ref.get(s.tick_id)))
+        ref_mid, mid = ref.get(s.tick_id), book.mid_price()
+        if band and mid:
+            gap = abs(mid - ref_mid) / mid if ref_mid else 0.0
+            book = book.trimmed(band + gap)
+        steps.append(Step(s.tick_ts, book, ref_mid))
     return Series(venue, run.interval_s, steps)
 
 
@@ -744,9 +752,13 @@ def summarize_results(
     # Refill evidence: how much of a child-sized slice near the touch is still
     # there, unchanged, one child later.
     unchanged: list[float] = []
-    for a, b in zip(series.steps, series.steps[1:], strict=False):
-        if round((b.tick_ts - a.tick_ts) / series.interval_s) != every:
-            continue  # not one child apart (a gap in the data, or every > 1)
+    # Pair each tick with the one exactly `every` ticks later (one child apart), the
+    # same way Series.windows does; a missing tick just drops that pair.
+    by_tick = {round(s.tick_ts / series.interval_s): s for s in series.steps}
+    for k, a in by_tick.items():
+        b = by_tick.get(k + every)
+        if b is None:
+            continue
         for side in sides:
             share = book_unchanged_share(a.snapshot, b.snapshot, side, usd / n_children)
             if share is not None:
@@ -1003,7 +1015,12 @@ def _findings(full: list[SummaryRow], no_refill: dict) -> list[str]:
             f"hardly requote, so there is little reason to expect it to refill"
         )
         if r0 is not None:
-            sentence += f" (without refill, TWAP saved a median {r0.saving.median:.1f} bps)"
+            saved = r0.saving.median
+            sentence += (
+                f" (without refill, TWAP saved a median {saved:.1f} bps)"
+                if saved >= 0
+                else f" (without refill, TWAP cost a median {-saved:.1f} bps more)"
+            )
         if r not in filled:
             sentence += (
                 f", and inside the price limit it fills only {_pct(r.one_shot_fill)} of "

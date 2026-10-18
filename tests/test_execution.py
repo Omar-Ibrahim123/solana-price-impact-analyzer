@@ -17,7 +17,9 @@ from impact_analyzer.execution import (
     execute_ioc,
     load_series,
     run_window,
+    run_windows,
     simulate_ioc,
+    summarize_results,
     twap,
     twap_markdown,
     twap_summary,
@@ -346,3 +348,38 @@ def test_series_from_steps_directly():
     steps = [Step(T0 + i * 300, ladder(at=T0 + i * 300), 100.0) for i in range(3)]
     series = Series("kraken", 300, steps)
     assert len(series.windows(3)) == 1 and len(series.windows(2)) == 2
+
+
+def test_protection_is_centred_on_the_reference_price_when_given():
+    # Regression (review): Phoenix's lopsided book had a bid at $89 and an ask at $104.35
+    # while the market was $103.70. Centred on its own mid ($96.68), a 10% band let a sell
+    # fill at $89; centred on the reference mid it must not fill at all.
+    snap = BookSnapshot(
+        venue="phoenix",
+        symbol="SOL/USDC",
+        fetched_at=0.0,
+        tick_size=Decimal("0.001"),
+        lot_size=Decimal("0.001"),
+        bids=[RestingOrder(89_000, 100_000)],
+        asks=[RestingOrder(104_350, 100_000)],
+    )
+    lots = 10_000  # 10 SOL
+    own = execute_ioc(snap, "sell", lots)
+    assert own.filled_lots == lots  # the junk fill the reference band exists to prevent
+    ref = execute_ioc(snap, "sell", lots, reference_price=103.70)
+    assert ref.filled_lots == 0
+    assert ref.limit_price == pytest.approx(103.70 * 0.9, abs=0.001)
+    result = twap([snap, snap], "sell", 1_000, prices=[103.70, 103.70])
+    assert result.one_shot.filled_lots == 0
+    assert all(c.result.filled_lots == 0 for c in result.children)
+
+
+def test_book_unchanged_pairs_ticks_one_child_apart_when_every_is_2():
+    # Regression (review): with every=2 the refill column compared consecutive ticks
+    # and kept only pairs 2 apart, so a gap-free run showed "n/a".
+    steps = [Step(T0 + i * 300, ladder(at=T0 + i * 300), 100.0) for i in range(6)]
+    series = Series("kraken", 300, steps)
+    results = run_windows(series, 1_000, "buy", n_children=2, every=2, benchmark="ref")
+    row = summarize_results(series, 1_000, results, n_children=2, every=2)
+    assert row is not None and row.unchanged is not None
+    assert row.unchanged.median == pytest.approx(1.0)  # identical books: fully unchanged

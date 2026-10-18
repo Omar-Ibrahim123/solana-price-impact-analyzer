@@ -87,6 +87,7 @@ def headlines(
     activity: Sequence[Activity],
     healths: Sequence[Health],
     sizes: Sequence[float],
+    max_slippage: float = DEFAULT_MAX_SLIPPAGE,
 ) -> list[str]:
     """Sentences stating what the numbers say, each one computed, none hand-written."""
     out: list[str] = []
@@ -151,7 +152,12 @@ def headlines(
             out.append(
                 f"Half round-trip cost at {short_usd(usd)} (buy and sell, median bps of the "
                 f"reference mid), cheapest first: {text}."
-                + (f" Never filled both ways: {', '.join(missing)}." if missing else "")
+                + (
+                    f" No complete buy-and-sell pair at this size (no route, a failed quote, "
+                    f"or too little within the price limit): {', '.join(missing)}."
+                    if missing
+                    else ""
+                )
             )
 
     # 5. Fees change the ranking
@@ -199,12 +205,18 @@ def headlines(
             if not ref_fill or not own_fill or ref_fill[0] >= own_fill[0]:
                 continue
             own_cost = _median(summaries, (v, "own_band_cost_bps", side, small))
+            if own_cost is None:
+                how = ""
+            elif own_cost > 0:
+                how = f", at a median {fmt_bps(own_cost)} bps worse than the market"
+            else:
+                how = f", at a median {fmt_bps(own_cost)} bps vs the reference mid"
             out.append(
                 f"Price protection matters on {label(v)}: a {short_usd(small)} {side} limited to "
-                f"10% from the reference mid filled in {ref_fill[0]}/{ref_fill[1]} ticks; with "
-                f"v1's band around {label(v)}'s own mid it would have filled in "
-                f"{own_fill[0]}/{own_fill[1]}, at a median {fmt_bps(own_cost)} bps worse than the "
-                f"market. This report uses the reference-mid band."
+                f"{max_slippage:.0%} from the reference mid filled in {ref_fill[0]}/"
+                f"{ref_fill[1]} ticks; with v1's band around {label(v)}'s own mid it would have "
+                f"filled in {own_fill[0]}/{own_fill[1]}{how}. This report uses the "
+                f"reference-mid band."
             )
 
     # 6. Where routes run out
@@ -423,7 +435,7 @@ CHART_CAPTIONS = {
     "depth": "USD resting within 2% of each venue's own mid. Exchange books are aggregated "
     "levels; Phoenix's are individual orders.",
     "cost_books": "What a market order would cost on each order book, against the reference mid, "
-    "with 10% price protection. Fees excluded (see the tables).",
+    "with price protection (the band is given under Method). Fees excluded (see the tables).",
     "cost_jupiter": "Jupiter quotes per route filter, against the same reference mid. AMM fees "
     "are already inside the quoted price.",
     "round_trip": "The one yardstick for every venue and route: half the gap between the buy "
@@ -480,9 +492,9 @@ def render_markdown(
     else:
         md.append("The database holds no ticks yet.")
     md += ["", "## Headline findings", ""]
-    md += [f"- {h}" for h in headlines(data, summaries, activity, healths, sizes)] or [
-        "- (no data)"
-    ]
+    md += [
+        f"- {h}" for h in headlines(data, summaries, activity, healths, sizes, max_slippage)
+    ] or ["- (no data)"]
 
     md += ["", "## Charts", ""]
     for key, path in chart_paths.items():
@@ -561,7 +573,7 @@ def render_markdown(
         "price levels, not individual orders; Phoenix's book is every order. Hidden and iceberg "
         "liquidity on the exchanges is invisible here.",
         "- **Trimmed books.** Exchange books are stored only within 25% of mid (anything further "
-        "is outside the 10% protection band anyway). Phoenix is stored whole, junk quotes "
+        "is outside the price protection band anyway). Phoenix is stored whole, junk quotes "
         "included.",
         "- **Quotes aren't trades.** A Jupiter quote is what a route would pay at that slot; the "
         "real fill can differ (slippage, priority fees, the pool moving first). Jupiter quotes "
@@ -632,7 +644,7 @@ def build_report(
         ),
     }
     # "Does splitting a big order help?": execution.py replays TWAPs over the same snapshots.
-    twap = twap_markdown(store, run_id=run_id)
+    twap = twap_markdown(store, run_id=run_id, limit_bps=max_slippage * 10_000)
     md = render_markdown(
         data, summaries, activity, healths, chart_paths, sizes, max_slippage, [twap]
     )

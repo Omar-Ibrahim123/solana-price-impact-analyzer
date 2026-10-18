@@ -72,8 +72,10 @@ Coinbase REST ───────────────▶ cex.py ───�
 | `dict` of order id → node | cancel jumps straight to the node in O(1) |
 
 Fills always print at the resting (maker) order's price; a partially filled maker keeps its place
-at the head of the queue. Prices and sizes are integers end to end, as on-chain programs require
-(every validator must compute the same result, which floats don't guarantee).
+at the head of the queue. Prices and sizes are integers end to end, as in Phoenix: money must be
+exact (every token atom accounted for, which floats can't promise), token amounts are integers to
+begin with, and an exact integer price is a reliable key for a price level. (Solana does allow
+floats, emulated in software so every validator agrees, but they are slow and still inexact.)
 
 `tests/test_engine_properties.py` uses Hypothesis to run thousands of random sequences of adds,
 cancels and market orders through the engine and through a deliberately naive reference model, and

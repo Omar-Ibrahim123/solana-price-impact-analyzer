@@ -42,7 +42,7 @@ HEADER_SIZE = 576
 PADDING_SIZE = 256
 MARKET_FIELDS_SIZE = 6 * 8
 TREE_PREFIX_SIZE = 16 + 16  # RBTree header (root etc.) + node allocator header
-NODE_SIZE = 64  # 4 x i32 registers + 16-byte key + 32-byte value
+NODE_SIZE = 64  # 4 x u32 registers + 16-byte key + 32-byte value
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,18 +197,21 @@ U64_MASK = (1 << 64) - 1
 def decode_order_tree(buf: bytes, is_bids: bool = False) -> list[PhoenixOrder]:
     """Read every live node of one order tree (bids or asks), unsorted.
 
-    Bids store their sequence number bit-flipped (``!seq`` in Rust). The tree
-    keeps each side sorted by its key (price, seq), and the program reads bids
-    from the high end. Flipping the bits makes an *older* bid (smaller seq) a
-    *larger* stored value, so at one price it still comes first. We undo the
-    flip here, so ``order_sequence_number`` always means the real number.
+    Bids store their sequence number bit-flipped (``!seq`` in Rust). Phoenix
+    keeps the bids tree in *reverse* key order, so its first node is the best
+    (highest) bid; under that reversed comparison, flipping the bits makes an
+    older bid (smaller real seq, so larger stored value) come first at the same
+    price. A side effect: every bid's stored number has its top bit set. We undo
+    the flip here, so ``order_sequence_number`` always means the real number.
+    (Checked on real bytes: walking the bids tree in order gives best price
+    first, oldest first.)
 
-    Allocator header (bytes 16..32 of the tree): size u64, bump_index i32,
-    free_list_head i32. ``bump_index`` is one past the last node ever
+    Allocator header (bytes 16..32 of the tree): size u64, bump_index u32,
+    free_list_head u32. ``bump_index`` is one past the last node ever
     allocated, and node indices are 1-based (0 means "null"). Freed nodes form
     a linked list through their first register.
     """
-    bump_index, free_list_head = struct.unpack_from("<ii", buf, 16 + 8)
+    bump_index, free_list_head = struct.unpack_from("<II", buf, 16 + 8)
     n_allocated = max(bump_index - 1, 0)
 
     nodes: list[tuple[int, PhoenixOrder]] = []  # (next-free pointer, order)
@@ -216,7 +219,7 @@ def decode_order_tree(buf: bytes, is_bids: bool = False) -> list[PhoenixOrder]:
         off = TREE_PREFIX_SIZE + i * NODE_SIZE
         if off + NODE_SIZE > len(buf):
             break
-        registers = struct.unpack_from("<4i", buf, off)
+        registers = struct.unpack_from("<4I", buf, off)
         price, seq, trader, lots, slot, ts = struct.unpack_from("<6Q", buf, off + 16)
         if is_bids:
             seq = ~seq & U64_MASK  # un-flip (see docstring); Python ints need the mask
@@ -232,7 +235,7 @@ def free_node_indices(buf: bytes) -> set[int]:
     The list starts at ``free_list_head`` and each free node's first register
     points at the next one (1-based; 0 ends the list).
     """
-    bump_index, head = struct.unpack_from("<ii", buf, 16 + 8)
+    bump_index, head = struct.unpack_from("<II", buf, 16 + 8)
     free: set[int] = set()
     while 0 < head < bump_index:
         index = head - 1  # 1-based -> 0-based
@@ -242,7 +245,7 @@ def free_node_indices(buf: bytes) -> set[int]:
         if off + 4 > len(buf):
             break  # a truncated buffer: stop rather than read past the end
         free.add(index)
-        head = struct.unpack_from("<i", buf, off)[0]
+        head = struct.unpack_from("<I", buf, off)[0]
     return free
 
 

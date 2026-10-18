@@ -217,7 +217,7 @@ def phoenix_account_slice(raw: bytes, slot: int | None, address: str, n_nodes: i
         fields.append(_entry(f, raw, tree + f.offset, f"bids.{f.name}", EXPLAIN[f.name]))
     bids_len = phoenix.TREE_PREFIX_SIZE + phoenix.NODE_SIZE * header.bids_size
     free = phoenix.free_node_indices(raw[tree : tree + bids_len])
-    bump = struct.unpack_from("<i", raw, tree + 24)[0]
+    bump = struct.unpack_from("<I", raw, tree + 24)[0]
     for i in range(n_nodes):
         node = tree + phoenix.TREE_PREFIX_SIZE + i * phoenix.NODE_SIZE
         if i >= bump - 1:
