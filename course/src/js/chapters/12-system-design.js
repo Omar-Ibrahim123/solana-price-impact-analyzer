@@ -32,7 +32,7 @@
     {
       id: "engine", name: "Engine", modules: "orderbook.py · convert.py · impact.py",
       what: "`convert.py` replays a snapshot, order by order, into a fresh `OrderBook`. `impact.py` then sends one [[market-order|market order]] per trade size, with a 10% [[price-protection|price-protection]] band, and records every fill.",
-      why: "**Price-time priority with three structures**: a sorted map of price levels, a doubly linked list per level (FIFO, unlink in O(1)), and a hash map from order id to node (cancel in O(1)). **Integers end to end**, as on-chain programs require. **One engine for every venue**, so differences come from the books, not the code. This page runs a JavaScript port of it that reproduces the Python engine's fills exactly on 2,000 recorded operations.",
+      why: "**Price-time priority with three structures**: a sorted map of price levels, a doubly linked list per level (FIFO, unlink in O(1)), and a hash map from order id to node (cancel in O(1)). **Integers end to end**, as on-chain programs require. **One engine for every venue**, so differences come from the books, not the code. This page runs a JavaScript port of it that reproduces the Python engine's fills exactly on about 2,000 recorded operations.",
     },
     {
       id: "analyze", name: "Analyze", modules: "metrics.py · timeseries.py · execution.py · fees.py",
