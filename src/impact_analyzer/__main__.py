@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from .amm import depth_within, equivalent_pool
+from .execution import add_twap_parser
 from .impact import (
     DEFAULT_MAX_SLIPPAGE,
     DEFAULT_SIZES_USD,
@@ -220,8 +221,12 @@ def main(argv: list[str] | None = None) -> None:
         )
 
     add_collect_parsers(sub)
+    add_twap_parser(sub)
 
     args = parser.parse_args(argv)
+    # Commands that register a handler (set_defaults(handler=...)) dispatch themselves.
+    if getattr(args, "handler", None) is not None:
+        return args.handler(args)
     if args.command in ("collect", "status"):
         return cmd_collect_or_status(args)
     data_dir = Path(args.data_dir)
