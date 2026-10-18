@@ -7,6 +7,8 @@ run       fetch, then analyze what was just fetched
 demo      analyze made-up books (no network), to try everything offline
 collect   snapshot every venue + Jupiter quotes on a schedule into SQLite
 status    progress and health of the newest collector run
+report    REPORT.md + charts from a collector database
+export    course data file (export v2 JSON) from a collector database
 """
 
 from __future__ import annotations
@@ -15,12 +17,13 @@ import argparse
 import json
 import logging
 import sys
-import time
 from datetime import UTC, datetime
 from pathlib import Path
 
+from . import export, report
 from .amm import depth_within, equivalent_pool
 from .execution import add_twap_parser
+from .export import export_for_playground
 from .impact import (
     DEFAULT_MAX_SLIPPAGE,
     DEFAULT_SIZES_USD,
@@ -97,46 +100,6 @@ def _short(usd: float) -> str:
         if usd >= div:
             return f"{float(f'{usd / div:.3g}'):g}{suffix}"
     return f"{usd:.0f}"
-
-
-def export_for_playground(
-    snaps: list[BookSnapshot], curves: dict, amm_usd: float | None, max_levels: int = 400
-) -> dict:
-    """Aggregate each book by price level, in USD and SOL, for the web playground."""
-
-    def levels(snap: BookSnapshot, orders) -> list[list[float]]:
-        agg: dict[int, int] = {}
-        for o in orders:  # dicts keep insertion order: best price first
-            agg[o.price_ticks] = agg.get(o.price_ticks, 0) + o.size_lots
-        items = list(agg.items())[:max_levels]
-        return [[snap.price(p), snap.size(s)] for p, s in items]
-
-    venues = []
-    for snap in snaps:
-        c = curves[snap.venue]
-        venues.append(
-            {
-                "venue": snap.venue,
-                "symbol": snap.symbol,
-                "fetched_at": snap.fetched_at,
-                "mid": snap.mid_price(),
-                "spread_bps": snap.spread_bps(),
-                "bids": levels(snap, snap.bids),
-                "asks": levels(snap, snap.asks),
-                "curve": {
-                    side: [[r.target_usd, r.impact_bps, r.fully_filled] for r in c[side]]
-                    for side in ("buy", "sell")
-                },
-                "meta": snap.meta,
-            }
-        )
-    return {
-        "kind": "impact-analyzer-export",
-        "version": 1,
-        "generated_at": time.time(),
-        "venues": venues,
-        "amm_usd_reserve": amm_usd,
-    }
 
 
 def analyze(
@@ -222,6 +185,8 @@ def main(argv: list[str] | None = None) -> None:
 
     add_collect_parsers(sub)
     add_twap_parser(sub)
+    report.add_parser(sub)
+    export.add_parser(sub)
 
     args = parser.parse_args(argv)
     # Commands that register a handler (set_defaults(handler=...)) dispatch themselves.

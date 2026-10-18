@@ -46,6 +46,77 @@ NODE_SIZE = 64  # 4 x i32 registers + 16-byte key + 32-byte value
 
 
 @dataclass(frozen=True, slots=True)
+class Field:
+    """One field of the account layout: where it lives and how to read it."""
+
+    name: str
+    offset: int  # bytes from the start of the enclosing structure
+    size: int  # bytes
+    type: str  # "u32", "u64", "pubkey" (32 bytes) or "bytes" (padding / unused)
+
+
+# The 576-byte MarketHeader, field by field (offsets from phoenix-trade's layout).
+# One table serves both the decoder below and the course's hex explorer (export.py),
+# so the two can never disagree about where a field is.
+HEADER_LAYOUT: tuple[Field, ...] = (
+    Field("discriminant", 0, 8, "bytes"),
+    Field("status", 8, 8, "u64"),
+    Field("bids_size", 16, 8, "u64"),
+    Field("asks_size", 24, 8, "u64"),
+    Field("num_seats", 32, 8, "u64"),
+    Field("base_decimals", 40, 4, "u32"),
+    Field("base_vault_bump", 44, 4, "u32"),
+    Field("base_mint", 48, 32, "pubkey"),
+    Field("base_vault", 80, 32, "pubkey"),
+    Field("base_lot_size", 112, 8, "u64"),
+    Field("quote_decimals", 120, 4, "u32"),
+    Field("quote_vault_bump", 124, 4, "u32"),
+    Field("quote_mint", 128, 32, "pubkey"),
+    Field("quote_vault", 160, 32, "pubkey"),
+    Field("quote_lot_size", 192, 8, "u64"),
+    Field("tick_size_in_quote_atoms_per_base_unit", 200, 8, "u64"),
+    Field("authority", 208, 32, "pubkey"),
+    Field("fee_recipient", 240, 32, "pubkey"),
+    Field("market_sequence_number", 272, 8, "u64"),
+    Field("successor", 280, 32, "pubkey"),
+    Field("raw_base_units_per_base_unit", 312, 4, "u32"),
+    Field("header_padding", 316, HEADER_SIZE - 316, "bytes"),
+)
+# The six u64s right after the 256 bytes of padding (offsets from the account start).
+MARKET_FIELDS_OFFSET = HEADER_SIZE + PADDING_SIZE
+MARKET_FIELD_NAMES = (
+    "base_lots_per_base_unit",
+    "quote_lots_per_base_unit_per_tick",
+    "order_sequence_number",
+    "taker_fee_bps",
+    "collected_quote_lot_fees",
+    "unclaimed_quote_lot_fees",
+)
+# Start of an order tree (offsets from the tree's first byte).
+TREE_LAYOUT: tuple[Field, ...] = (
+    Field("root", 0, 4, "u32"),
+    Field("tree_padding", 4, 12, "bytes"),
+    Field("allocator_size", 16, 8, "u64"),
+    Field("bump_index", 24, 4, "u32"),
+    Field("free_list_head", 28, 4, "u32"),
+)
+# One 64-byte node (offsets from the node's first byte): 4 registers, key, value.
+NODE_LAYOUT: tuple[Field, ...] = (
+    Field("left", 0, 4, "u32"),
+    Field("right", 4, 4, "u32"),
+    Field("parent", 8, 4, "u32"),
+    Field("color", 12, 4, "u32"),
+    Field("price_in_ticks", 16, 8, "u64"),
+    Field("order_sequence_number", 24, 8, "u64"),
+    Field("trader_index", 32, 8, "u64"),
+    Field("num_base_lots", 40, 8, "u64"),
+    Field("last_valid_slot", 48, 8, "u64"),
+    Field("last_valid_unix_timestamp_in_seconds", 56, 8, "u64"),
+)
+_HEADER = {f.name: f for f in HEADER_LAYOUT}
+
+
+@dataclass(frozen=True, slots=True)
 class MarketHeader:
     """The fields of the 576-byte header that we need (offsets from phoenix-trade)."""
 
@@ -65,23 +136,21 @@ class MarketHeader:
         if len(data) < HEADER_SIZE:
             raise ValueError(f"account is {len(data)} bytes, smaller than the header")
 
-        def u64(off: int) -> int:
-            return struct.unpack_from("<Q", data, off)[0]
-
-        def u32(off: int) -> int:
-            return struct.unpack_from("<I", data, off)[0]
+        def read(name: str) -> int:
+            f = _HEADER[name]  # offset and width come from HEADER_LAYOUT
+            return struct.unpack_from("<Q" if f.type == "u64" else "<I", data, f.offset)[0]
 
         return cls(
-            bids_size=u64(16),
-            asks_size=u64(24),
-            num_seats=u64(32),
-            base_decimals=u32(40),
-            quote_decimals=u32(120),
-            base_lot_size=u64(112),
-            quote_lot_size=u64(192),
-            tick_size_in_quote_atoms_per_base_unit=u64(200),
-            market_sequence_number=u64(272),
-            raw_base_units_per_base_unit=u32(312),
+            bids_size=read("bids_size"),
+            asks_size=read("asks_size"),
+            num_seats=read("num_seats"),
+            base_decimals=read("base_decimals"),
+            quote_decimals=read("quote_decimals"),
+            base_lot_size=read("base_lot_size"),
+            quote_lot_size=read("quote_lot_size"),
+            tick_size_in_quote_atoms_per_base_unit=read("tick_size_in_quote_atoms_per_base_unit"),
+            market_sequence_number=read("market_sequence_number"),
+            raw_base_units_per_base_unit=read("raw_base_units_per_base_unit"),
         )
 
     @property
@@ -142,16 +211,28 @@ def decode_order_tree(buf: bytes) -> list[PhoenixOrder]:
         price, seq, trader, lots, slot, ts = struct.unpack_from("<6Q", buf, off + 16)
         nodes.append((registers[0], PhoenixOrder(price, seq, trader, lots, slot, ts)))
 
+    free = free_node_indices(buf)
+    return [order for i, (_, order) in enumerate(nodes) if i not in free]
+
+
+def free_node_indices(buf: bytes) -> set[int]:
+    """0-based indices of the nodes on one tree's free list (deleted, waiting for reuse).
+
+    The list starts at ``free_list_head`` and each free node's first register
+    points at the next one (1-based; 0 ends the list).
+    """
+    bump_index, head = struct.unpack_from("<ii", buf, 16 + 8)
     free: set[int] = set()
-    head = free_list_head
     while 0 < head < bump_index:
         index = head - 1  # 1-based -> 0-based
         if index in free:
             raise ValueError("free list has a cycle")
+        off = TREE_PREFIX_SIZE + index * NODE_SIZE
+        if off + 4 > len(buf):
+            break  # a truncated buffer: stop rather than read past the end
         free.add(index)
-        head = nodes[index][0]
-
-    return [order for i, (_, order) in enumerate(nodes) if i not in free]
+        head = struct.unpack_from("<i", buf, off)[0]
+    return free
 
 
 def order_trees_end(header: MarketHeader) -> int:
