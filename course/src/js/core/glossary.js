@@ -648,6 +648,33 @@
       def: "A way to write any bytes using only 64 safe text characters (A–Z, a–z, 0–9, + and /), so binary data can travel inside JSON.",
       related: ["byte", "rpc", "json"],
     },
+    instruction: {
+      term: "Instruction", aliases: ["instructions"], chapter: 8,
+      def: "One request inside a Solana transaction: which program to run, which accounts it may read or write, and the data it needs, such as \"place a bid at $103.75 for 2 SOL\". A transaction can hold several instructions, and they all succeed or all fail together.",
+      related: ["transaction", "program", "account"],
+    },
+    seat: {
+      term: "Trader seat", aliases: ["seat", "seats", "trader seats"], chapter: 8,
+      def: "A trader's place inside a Phoenix market: a record in the market account that holds the SOL and USDC they have deposited or locked in orders. Makers need a seat to place orders, and their fills are credited to it straight away.",
+      project: "The SOL/USDC traders tree has room for 8,321 seats of 144 bytes each, about 1.2 MB of the 1.7 MB account. The collector doesn't store it.",
+      related: ["phoenix", "account", "maker", "crankless"],
+    },
+    vault: {
+      term: "Vault", aliases: ["vaults", "token vault"], chapter: 8,
+      def: "A token account that holds a market's deposits for all its traders, controlled by the market's program. Phoenix's SOL/USDC market has one vault for SOL and one for USDC.",
+      related: ["account", "program", "seat"],
+    },
+    "sequence-number": {
+      term: "Sequence number", aliases: ["sequence numbers", "order sequence number", "seq"], chapter: 8,
+      def: "A counter that gives every new order the next number: 1, 2, 3 and so on. A smaller number means an older order, so it settles who goes first among orders at the same price.",
+      project: "Phoenix stores bid sequence numbers bit-flipped (NOT seq); phoenix.py un-flips them when it decodes.",
+      related: ["price-time-priority", "bitwise-not", "order-id"],
+    },
+    "bitwise-not": {
+      term: "Bitwise NOT", aliases: ["bit flip", "bit-flipped", "NOT"], chapter: 8,
+      def: "Flipping every bit of a number: each 0 becomes 1 and each 1 becomes 0. For a 64-bit number, NOT n = 18,446,744,073,709,551,615 − n, so small numbers become huge ones and their order is reversed.",
+      related: ["bit", "u64", "sequence-number"],
+    },
 
     // ---------------------------------------------------------------- 9. trees in arrays
     "free-list": {
@@ -655,6 +682,22 @@
       def: "A linked list of empty slots that can be reused. When an order leaves the book its slot goes onto the free list, and the next new order takes that slot instead of growing the array, like a parking lot reusing spaces.",
       project: "Phoenix's node allocator keeps a bump index (next never-used slot) and a free-list head; the decoder skips freed nodes.",
       related: ["red-black-tree", "array", "linked-list", "index"],
+    },
+    "bump-index": {
+      term: "Bump index", aliases: ["bump_index"], chapter: 9,
+      def: "The number of the next never-used slot in a fixed array. When no freed slot is waiting, a new item takes this slot and the bump index moves up by one. It never moves back down.",
+      project: "In Phoenix's SOL/USDC bids tree at slot 458,325,932 the bump index was 1,683: slots 1–1,682 had been used at least once, and 2,414 had never been touched.",
+      related: ["free-list", "array", "index"],
+    },
+    stack: {
+      term: "Stack", aliases: ["LIFO", "last in, first out"], chapter: 9,
+      def: "A pile where the last thing put on is the first thing taken off (last in, first out), like a stack of plates. A free list works this way: the most recently freed slot is the first to be reused.",
+      related: ["free-list", "linked-list"],
+    },
+    rotation: {
+      term: "Rotation", aliases: ["rotations", "tree rotation"], chapter: 9,
+      def: "A small local rearrangement of a binary search tree: a child moves up into its parent's place and the parent becomes its child, without changing the sorted order. Red-black trees use a few rotations and recolourings after an insert or delete to stay balanced.",
+      related: ["red-black-tree", "binary-search-tree"],
     },
 
     // ---------------------------------------------------------------- 10. AMMs and venues
@@ -757,6 +800,11 @@
       term: "Perpetual futures", aliases: ["perps", "perpetuals"], chapter: 13,
       def: "Contracts that let you bet on a price going up or down without owning the asset, and that never expire. Phoenix perpetuals is Ellipsis Labs' newer product.",
       related: ["phoenix", "ellipsis-labs"],
+    },
+    "concentrated-liquidity": {
+      term: "Concentrated liquidity", aliases: ["CLMM", "concentrated-liquidity AMM"], chapter: 10,
+      def: "An AMM design where each liquidity provider picks a price range for their money. Inside that range the pool behaves like a much bigger x·y = k pool, so trades near the current price move it far less. Orca Whirlpool and Raydium CLMM work this way; Meteora DLMM splits prices into fixed bins instead.",
+      related: ["amm", "xyk", "liquidity-provider"],
     },
 
     // ---------------------------------------------------------------- 11. real data
