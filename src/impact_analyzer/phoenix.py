@@ -262,7 +262,8 @@ def market_field(data: bytes, name: str) -> int:
     """One of the six u64s after the padding, e.g. ``"order_sequence_number"``.
 
     ``order_sequence_number`` is the market's counter: the number the *next*
-    new order will get. Event replay (replay.py) uses it to check that every
+    resting order will get (the program bumps it only when an order comes to
+    rest; takers never get one). Event replay (replay.py) uses it to check that every
     new order's number was handed out between two snapshots.
     """
     index = MARKET_FIELD_NAMES.index(name)

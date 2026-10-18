@@ -234,8 +234,7 @@ class OrderBook:
         order = self.orders[order_id]
         if not 0 < new_size_lots < order.size_lots:
             raise ValueError(
-                f"new size must be between 0 and {order.size_lots} (exclusive), "
-                f"got {new_size_lots}"
+                f"new size must be between 0 and {order.size_lots} (exclusive), got {new_size_lots}"
             )
         level = self._book(order.side)[order.price_ticks]
         # Keep the level total in sync by hand, exactly like a partial fill in _match.

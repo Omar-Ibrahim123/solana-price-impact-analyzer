@@ -9,6 +9,7 @@ collect   snapshot every venue + Jupiter quotes on a schedule into SQLite
 status    progress and health of the newest collector run
 report    REPORT.md + charts from a collector database
 export    course data file (export v2 JSON) from a collector database
+replay    rebuild each Phoenix snapshot from the previous one + derived events
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-from . import export, report
+from . import export, replay, report
 from .amm import depth_within, equivalent_pool
 from .execution import add_twap_parser
 from .export import export_for_playground
@@ -187,6 +188,7 @@ def main(argv: list[str] | None = None) -> None:
     add_twap_parser(sub)
     report.add_parser(sub)
     export.add_parser(sub)
+    replay.add_parser(sub)
 
     args = parser.parse_args(argv)
     # Commands that register a handler (set_defaults(handler=...)) dispatch themselves.
