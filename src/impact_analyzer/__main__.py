@@ -5,12 +5,15 @@ analyze   simulate market orders on saved snapshots; print a table,
           write results JSON, the chart, and a playground export
 run       fetch, then analyze what was just fetched
 demo      analyze made-up books (no network), to try everything offline
+collect   snapshot every venue + Jupiter quotes on a schedule into SQLite
+status    progress and health of the newest collector run
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 import time
 from datetime import UTC, datetime
@@ -25,18 +28,14 @@ from .impact import (
     log_spaced_sizes,
 )
 from .snapshot import BookSnapshot
-
-VENUES = ("phoenix", "kraken", "coinbase")
+from .venues import FETCHERS, VENUES
 
 
 def fetch_one(venue: str, rpc_url: str | None) -> BookSnapshot:
-    if venue == "phoenix":
-        from .phoenix import fetch_snapshot
+    from .net import Http
 
-        return fetch_snapshot(rpc_url)
-    from . import cex
-
-    return cex.fetch_kraken() if venue == "kraken" else cex.fetch_coinbase()
+    with Http() as http:
+        return FETCHERS[venue](http, rpc_url).snapshot
 
 
 def cmd_fetch(args: argparse.Namespace) -> list[Path]:
@@ -220,7 +219,11 @@ def main(argv: list[str] | None = None) -> None:
             help="price protection: never trade more than this %% from mid (default 10)",
         )
 
+    add_collect_parsers(sub)
+
     args = parser.parse_args(argv)
+    if args.command in ("collect", "status"):
+        return cmd_collect_or_status(args)
     data_dir = Path(args.data_dir)
     band = args.max_slippage / 100
 
@@ -237,6 +240,87 @@ def main(argv: list[str] | None = None) -> None:
 
         print("Synthetic books (not real data):")
         analyze(demo_books(), data_dir, Path(args.chart), "demo-", band)
+
+
+def add_collect_parsers(sub: argparse._SubParsersAction) -> None:
+    from . import jupiter
+
+    p = sub.add_parser(
+        "collect",
+        help="snapshot every venue on a schedule into SQLite",
+        description="Take a snapshot of every venue (and Jupiter quotes) every --every, for "
+        "--duration, into a SQLite database. Safe to stop with Ctrl+C and to --resume.",
+    )
+    p.add_argument("--every", default="5m", help="interval between ticks (default 5m)")
+    p.add_argument("--duration", default="24h", help="how long to run (default 24h)")
+    p.add_argument("--db", default="data/collect.sqlite", help="SQLite file (created if missing)")
+    p.add_argument("--resume", action="store_true", help="continue the newest unfinished run")
+    p.add_argument("--venues", nargs="+", choices=VENUES, default=list(VENUES))
+    p.add_argument("--rpc", help="Solana RPC URL (default: $SOLANA_RPC_URL or mainnet-beta)")
+    p.add_argument("--no-jupiter", action="store_true", help="skip Jupiter AMM quotes")
+    p.add_argument(
+        "--jupiter-dexes",
+        nargs="+",
+        choices=list(jupiter.DEX_FILTERS),
+        default=list(jupiter.DEFAULT_DEXES),
+        metavar="DEX",
+        help="route filters to quote, from %(choices)s (default: all but HumidiFi)",
+    )
+    p.add_argument(
+        "--jupiter-sizes",
+        nargs="+",
+        type=float,
+        default=list(jupiter.DEFAULT_SIZES_USD),
+        metavar="USD",
+        help="trade sizes to quote (default: 1000 10000 100000 1000000)",
+    )
+    p.add_argument(
+        "--jupiter-rps",
+        type=float,
+        default=jupiter.DEFAULT_RPS,
+        help="max Jupiter requests per second (default %(default)s; the free tier allows 0.5)",
+    )
+    p.add_argument("--log", help="also append the log to this file")
+
+    p = sub.add_parser("status", help="progress and health of the newest collector run")
+    p.add_argument("--db", default="data/collect.sqlite")
+
+
+def cmd_collect_or_status(args: argparse.Namespace) -> None:
+    from .collector import CollectConfig, format_status, parse_duration, run_collector
+    from .store import Store
+
+    if args.command == "status":
+        if not Path(args.db).exists():
+            sys.exit(f"{args.db} does not exist yet (start one with: collect)")
+        with Store(args.db) as store:
+            print(format_status(store))
+        return
+
+    handlers: list[logging.Handler] = [logging.StreamHandler(sys.stdout)]
+    if args.log:
+        Path(args.log).parent.mkdir(parents=True, exist_ok=True)
+        handlers.append(logging.FileHandler(args.log, encoding="utf-8"))
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)-7s %(message)s",
+        datefmt="%H:%M:%S",
+        handlers=handlers,
+        force=True,
+    )
+    logging.getLogger("httpx").setLevel(logging.WARNING)  # a line per request is too noisy
+    config = CollectConfig(
+        interval_s=parse_duration(args.every),
+        duration_s=parse_duration(args.duration),
+        venues=args.venues,
+        rpc=args.rpc,
+        jupiter=not args.no_jupiter,
+        jupiter_dexes=args.jupiter_dexes,
+        jupiter_sizes=args.jupiter_sizes,
+        jupiter_rps=args.jupiter_rps,
+    )
+    with Store(args.db) as store:
+        run_collector(store, config, resume=args.resume)
 
 
 if __name__ == "__main__":

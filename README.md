@@ -95,6 +95,20 @@ snapshots; defaults to the newest per venue). The public Solana RPC is rate limi
 `SOLANA_RPC_URL` or pass `--rpc` to use another. `--max-slippage 5` changes the price protection
 band (default 10%). `pytest -m network` runs the live smoke test.
 
+### Collect over time
+
+```sh
+python -m impact_analyzer collect --every 5m --duration 24h   # into data/collect.sqlite
+python -m impact_analyzer status                              # progress, failures, latency
+```
+
+Every 5 minutes the collector fetches all three books at the same moment (plus the Solana slot),
+then asks Jupiter for real AMM quotes ($1K–$1M, buy and sell, per route: best, SolFi, Phoenix,
+Whirlpool, Raydium CLMM, Meteora DLMM), and writes the tick to SQLite in one transaction. A venue
+that fails is recorded with its error while the others carry on; 429s and 5xx are retried with
+backoff (Jupiter's free tier allows 5 requests per 10 s). Ctrl+C stops after the current tick,
+and `collect --resume` continues the run where it left off.
+
 `run` also writes `data/playground.json`, which the interactive Order Book Playground can load to
 draw the real books and their impact curves side by side.
 

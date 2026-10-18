@@ -75,6 +75,30 @@ class BookSnapshot:
         orders = self.bids if side == "bid" else self.asks
         return sum(self.price(o.price_ticks) * self.size(o.size_lots) for o in orders)
 
+    def trimmed(self, band: float) -> BookSnapshot:
+        """A copy keeping only orders within ``band`` (e.g. 0.25 = 25%) of mid.
+
+        The collector stores exchange books trimmed: Coinbase publishes ~13,000
+        levels, but nothing beyond the 10% price protection band can ever fill,
+        so storing them would only bloat the database. The cut is recorded in
+        ``meta`` so nobody mistakes a trimmed book for the full one.
+        """
+        mid = self.mid_price()
+        if mid is None:
+            return self
+        lo = mid * (1 - band) / float(self.tick_size)  # in ticks, to compare with ints
+        hi = mid * (1 + band) / float(self.tick_size)
+        return BookSnapshot(
+            venue=self.venue,
+            symbol=self.symbol,
+            fetched_at=self.fetched_at,
+            tick_size=self.tick_size,
+            lot_size=self.lot_size,
+            bids=[o for o in self.bids if o.price_ticks >= lo],
+            asks=[o for o in self.asks if o.price_ticks <= hi],
+            meta={**self.meta, "trimmed_band": band},
+        )
+
     def validate(self) -> None:
         """Raise ValueError if the snapshot is not a sane, uncrossed book."""
         for name, orders, descending in (("bids", self.bids, True), ("asks", self.asks, False)):
