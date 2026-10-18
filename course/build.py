@@ -5,9 +5,11 @@
 Standard library only. Steps:
 
 1. Generate the built-in data (course/data/builtin.json) from data/live-2026-10-18/:
-   the playground.json export (v1) plus the raw Phoenix snapshot and a summary of it. If
-   course/data/export.json exists (export v2, made by ``python -m impact_analyzer export``),
-   it replaces playground.json as the built-in dataset.
+   the playground.json export (v1) plus the raw Phoenix snapshot and a summary of it. These
+   04:31 UTC books are the course's teaching snapshot: chapters quote their numbers. If
+   course/data/export.json exists (export v2 from the collector, made by ``python -m
+   impact_analyzer export``), its time series, Jupiter quotes and Phoenix account bytes are
+   merged in, and the result is labelled version 2.
 2. Inline tokens.css + components.css, the JS files in dependency order, and the data into
    src/shell.html. Data goes in a <script type="application/json"> block: parsed, never run.
 3. Run contract checks and fail loudly: missing files, colours outside tokens.css, external
@@ -150,17 +152,21 @@ def phoenix_summary(snap: dict) -> dict:
 
 
 def build_data() -> tuple[dict, list[str]]:
-    sources = []
+    pg = LIVE / "playground.json"
+    builtin = json.loads(read(pg))  # the teaching snapshot's books (export v1)
+    sources = [pg.relative_to(REPO).as_posix()]
     export = DATA_DIR / "export.json"
     if export.is_file():
-        builtin = json.loads(read(export))
-        if builtin.get("kind") != "impact-analyzer-export" or builtin.get("version") not in (1, 2):
-            raise BuildError("course/data/export.json is not an impact-analyzer export v1/v2")
+        collected = json.loads(read(export))
+        if collected.get("kind") != "impact-analyzer-export" or collected.get("version") != 2:
+            raise BuildError("course/data/export.json is not an impact-analyzer export v2")
+        # Keep the snapshot's books; add what only the collector has.
+        for key in ("jupiter", "timeseries", "phoenix_account"):
+            if collected.get(key) is not None:
+                builtin[key] = collected[key]
+        builtin["version"] = 2
+        builtin["collected_at"] = collected.get("generated_at")
         sources.append(export.relative_to(REPO).as_posix())
-    else:
-        pg = LIVE / "playground.json"
-        builtin = json.loads(read(pg))
-        sources.append(pg.relative_to(REPO).as_posix())
     check_fees()
     for v in builtin["venues"]:
         if "fee_bps" not in v:

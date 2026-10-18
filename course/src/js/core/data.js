@@ -125,9 +125,13 @@
         const val = s[k];
         if (Array.isArray(val)) checkArr(val, `${p}.${k}`, (x) => isNum(x) || (Array.isArray(x) && x.every((y) => y === null || isNum(y))));
         else if (isObj(val)) {
-          for (const side of Object.keys(val)) {
-            need(isObj(val[side]), `${p}.${k}.${side}`, "must be an object keyed by trade size");
-            for (const size of Object.keys(val[side])) checkArr(val[side][size], `${p}.${k}.${side}["${size}"]`, isNum);
+          // Either keyed by trade size ({"1000": [...]}, e.g. round_trip_bps, which has no
+          // side) or by side, then size ({"buy": {"1000": [...]}}, e.g. cost_bps_vs_ref).
+          for (const key of Object.keys(val)) {
+            const inner = val[key];
+            if (Array.isArray(inner)) { checkArr(inner, `${p}.${k}["${key}"]`, isNum); continue; }
+            need(isObj(inner), `${p}.${k}.${key}`, "must be a list, or an object keyed by trade size");
+            for (const size of Object.keys(inner)) checkArr(inner[size], `${p}.${k}.${key}["${size}"]`, isNum);
           }
         } else need(false, `${p}.${k}`, "must be a list or an object of lists");
       }
