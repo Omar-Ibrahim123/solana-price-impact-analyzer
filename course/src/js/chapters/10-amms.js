@@ -318,7 +318,7 @@
       const notes = [];
       if (off.length) notes.push(`Off the top of the chart (over ${YMAX} bps): ${off.join("; ")}.`);
       const solfiMissing = sizes.filter((s) => { const q = get("SolFi", s); return q && !q.ok; });
-      if (solfiMissing.length) notes.push(`Jupiter found **no SolFi route** at ${solfiMissing.map(fmt.usdCompact).join(" and ")} in this tick: SolFi quoted the smaller sizes only.`);
+      if (solfiMissing.length) notes.push(`Jupiter found **no SolFi route** at ${solfiMissing.map(fmt.usdCompact).join(" and ")} in this round: SolFi quoted the smaller sizes only.`);
       const legs = sizes.map((s) => { const q = get("best", s); return q && q.ok && q.route && q.route.length ? `${fmt.usdCompact(s)}: ${routeText(q.route)}` : null; }).filter(Boolean);
       if (legs.length) {
         const known = quotes.some((q) => Array.isArray(q.route) && q.route.some((l) => legDirect(l) !== null));
@@ -458,7 +458,7 @@ Two newer ideas matter on Solana. A [[prop-amm|prop AMM]] belongs to one market-
       drawNotes();
       ctx.onData(drawNotes);
       tr.append(notesBox);
-      tr.append(ui.CodeExercise(SWAP_EX));
+      tr.append(ui.ForProgrammers({ title: "Exercise · A constant-product swap in code", children: ui.CodeExercise(SWAP_EX) }));
     },
 
     quiz: [

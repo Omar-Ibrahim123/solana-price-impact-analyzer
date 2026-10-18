@@ -2,7 +2,7 @@
  *   Explain  the pipeline idea, the collector's rules, SQLite over Parquet, exchange scale
  *   See      a clickable pipeline: fetch -> normalize -> store -> engine -> analyze -> report;
  *            each stage opens what it does, its modules and the decision behind it
- *   Try      "break a venue": a model of one collector tick (collector.py + net.py rules) with
+ *   Try      "break a venue": a model of one collector round (collector.py + net.py rules) with
  *            failures you switch on, the rows it would write, and --resume after a crash
  *   Check    quiz below
  * The failure simulator is a model of the code's rules, not a run of it: timings are examples,
@@ -17,7 +17,7 @@
     {
       id: "fetch", name: "Fetch", modules: "collector.py · venues.py · net.py",
       what: "Every 5 minutes, on the clock (12:00, 12:05, …), the [[collector]] starts one thread per venue and fetches Phoenix's market account over Solana [[rpc|RPC]], Kraken's and Coinbase's books from their [[api|APIs]], and the current Solana [[slot]], all at the same moment. Then it asks [[jupiter|Jupiter]] for 48 quotes (6 routes × 4 sizes × buy and sell), paced at 0.45 requests per second to stay inside the free tier's 5 requests per 10 seconds.",
-      why: "**Threads, so the books are simultaneous.** Fetched one after another, a slow RPC call would make Kraken's book seconds older than Phoenix's, and the comparison would be unfair. **Each venue is isolated**: an error becomes a failed row, never a crashed tick. **Retries live in one place**, `net.py`: timeouts, HTTP 429 and 5xx are retried up to 3 times with [[exponential-backoff|exponential backoff]] and jitter, honouring `Retry-After` and Jupiter's `x-ratelimit-reset`. Other 4xx errors, like Jupiter's \"no route found\", are not retried: asking again gives the same answer.",
+      why: "**Threads, so the books are simultaneous.** Fetched one after another, a slow RPC call would make Kraken's book seconds older than Phoenix's, and the comparison would be unfair. **Each venue is isolated**: an error becomes a failed row, never a crashed round. **Retries live in one place**, `net.py`: timeouts, HTTP 429 and 5xx are retried up to 3 times with [[exponential-backoff|exponential backoff]] and jitter, honouring `Retry-After` and Jupiter's `x-ratelimit-reset`. Other 4xx errors, like Jupiter's \"no route found\", are not retried: asking again gives the same answer.",
     },
     {
       id: "normalize", name: "Normalize", modules: "snapshot.py · phoenix.py · cex.py",
@@ -26,8 +26,8 @@
     },
     {
       id: "store", name: "Store", modules: "store.py · SQLite",
-      what: "Each tick is written in **one transaction**: the tick row, one row per venue (ok or failed, attempts, latency, error), each book as compressed JSON, Phoenix's raw account bytes, and every Jupiter quote with its route. `store.py` is the only module that writes SQL.",
-      why: "**[[sqlite|SQLite]] over Parquet.** It ships with Python; a tick lands completely or not at all, so a crash never leaves half a tick; a unique key on (run, tick time) makes restarts safe; and `status` and `report` are plain SQL queries. Parquet shines for columnar scans over millions of rows, which a day of 5-minute ticks isn't. **Raw bytes are kept** so a decoder bug found later can be fixed and the whole day re-decoded, instead of being baked into the data.",
+      what: "Each round is written in **one transaction**: the round row, one row per venue (ok or failed, attempts, latency, error), each book as compressed JSON, Phoenix's raw account bytes, and every Jupiter quote with its route. `store.py` is the only module that writes SQL.",
+      why: "**[[sqlite|SQLite]] over Parquet.** It ships with Python; a round lands completely or not at all, so a crash never leaves half a round; a unique key on (run, round time) makes restarts safe; and `status` and `report` are plain SQL queries. Parquet shines for columnar scans over millions of rows, which a day of 5-minute rounds isn't. **Raw bytes are kept** so a decoder bug found later can be fixed and the whole day re-decoded, instead of being baked into the data.",
     },
     {
       id: "engine", name: "Engine", modules: "orderbook.py · convert.py · impact.py",
@@ -146,7 +146,7 @@
     const faults = {};
     let interrupt = "none", restartAfter = 8;
     let db, nextSlot, running, lastRef, lastLog, lastSummary;
-    function reset() { db = []; nextSlot = START; running = true; lastRef = null; lastLog = []; lastSummary = "Press **Run next tick** to collect the 12:00 tick."; }
+    function reset() { db = []; nextSlot = START; running = true; lastRef = null; lastLog = []; lastSummary = "Press **Run next round** to collect the 12:00 round."; }
     reset();
 
     const faultBtns = FAULTS.map((fa) => h("button", {
@@ -165,7 +165,7 @@
       { value: "none", label: "Nothing" }, { value: "ctrlc", label: "Press Ctrl+C" }, { value: "kill", label: "Power cut (process killed)" }] });
     const restartSeg = ui.Segmented({ label: "Restart after", value: String(restartAfter), small: true, onChange: (v) => { restartAfter = Number(v); }, options: [
       { value: "1", label: "1 minute" }, { value: "8", label: "8 minutes" }] });
-    const runBtn = ui.Button({ label: "Run next tick", variant: "primary", onClick: () => runTick() });
+    const runBtn = ui.Button({ label: "Run next round", variant: "primary", onClick: () => runTick() });
     const resumeBtn = ui.Button({ label: "Restart: collect --resume", onClick: () => resume() });
     const resetBtn = ui.Button({ label: "Reset database", variant: "ghost", small: true, onClick: () => { reset(); paint(); } });
     const summary = h("div", { class: "readout-panel", attrs: { "aria-live": "polite" } });
@@ -173,13 +173,13 @@
     const dbBox = h("div");
     const statusBox = h("div");
 
-    /** collect_tick + insert_tick for slot `ts`, starting `late` seconds after the slot began. */
+    /** collect_tick + insert_tick for the 5-minute window `ts`, starting `late` seconds after it began. */
     function collect(ts, late) {
       const f = Object.assign({}, faults);
       const log = [];
       const t0 = ts + late;
       const add = (dt, text) => log.push([t0 + dt, text]);
-      if (late > 1) add(0, `Slot ${hm(ts)} started ${Math.round(late / 60)} min ago: collect it now, a little late (started_at records the delay)`);
+      if (late > 1) add(0, `The ${hm(ts)} window started ${Math.round(late / 60)} min ago: collect it now, a little late (started_at records the delay)`);
       add(0, "Threads start together: Phoenix, Kraken, Coinbase and getSlot");
       const res = {};
       for (const v of ["phoenix", "kraken", "coinbase"]) { res[v] = fetchVenue(v, f); for (const [dt, text] of res[v].ev) add(dt, text); }
@@ -190,7 +190,7 @@
       if (okRef.length) { ref = okRef.reduce((a, v) => a + mids[v], 0) / okRef.length; lastRef = ref; refNote = okRef.length === 2 ? "Kraken + Coinbase" : `${VENUE_LABEL[okRef[0]]} only`; }
       else if (lastRef) { ref = lastRef; refNote = "last known (both exchanges down)"; }
       else refNote = "none";
-      add(booksEnd, ref ? `Reference mid $${ref.toFixed(3)}: ${refNote}` : "No reference mid yet (both exchanges down on the first tick): Jupiter quotes skipped");
+      add(booksEnd, ref ? `Reference mid $${ref.toFixed(3)}: ${refNote}` : "No reference mid yet (both exchanges down on the first round): Jupiter quotes skipped");
 
       let quotes = 0, okQ = 0, t = booksEnd, stopped = null, extra = 0;
       if (ref) {
@@ -206,24 +206,24 @@
           else okQ++;
         }
         t += JUP_GAP;
-        if (interrupt === "ctrlc") { stopped = "ctrlc"; add(t, "Ctrl+C: \"stopping after this tick\". The quote loop stops early; the quotes already taken are kept"); }
+        if (interrupt === "ctrlc") { stopped = "ctrlc"; add(t, "Ctrl+C: \"stopping after this round\". The quote loop stops early; the quotes already taken are kept"); }
         if (interrupt === "kill") { stopped = "kill"; add(t, "Power cut: the process dies in the middle of the quote loop"); }
         else add(t, `Jupiter: ${okQ} of ${quotes} quotes OK`);
       } else if (interrupt !== "none") {
         stopped = interrupt;
-        add(t, interrupt === "kill" ? "Power cut: the process dies before the tick is written" : "Ctrl+C: \"stopping after this tick\"");
+        add(t, interrupt === "kill" ? "Power cut: the process dies before the round is written" : "Ctrl+C: \"stopping after this round\"");
       }
       const row = {
         ts, late, ref, refNote, quotes, okQ,
         venues: { phoenix: res.phoenix, kraken: res.kraken, coinbase: res.coinbase },
       };
       if (stopped === "kill") {
-        add(t, "Nothing from this tick reaches the database: the tick was still in memory, and it is written in one transaction only at the end");
+        add(t, "Nothing from this round reaches the database: the round was still in memory, and it is written in one transaction only at the end");
         running = false;
         return { log, row: null, stopped };
       }
       db.push(row);
-      add(t, `One transaction: tick ${hm(ts)} written (1 tick row, 3 venue rows, ${quotes} quote rows)`);
+      add(t, `One transaction: round ${hm(ts)} written (1 round row, 3 venue rows, ${quotes} quote rows)`);
       if (stopped === "ctrlc") { add(t, "Committed. The collector exits cleanly."); running = false; }
       return { log, row, stopped };
     }
@@ -233,11 +233,11 @@
       const out = collect(nextSlot, 0);
       lastLog = out.log;
       if (interrupt !== "none") { interrupt = "none"; interruptSeg.api.set("none"); } // one-shot
-      const r = out.row, slot = hm(nextSlot);
-      if (out.stopped === "kill") lastSummary = `**Killed during the ${slot} tick.** The database still holds every completed tick (${db.length}) and nothing half-written. Choose when to restart, then press **Restart**.`;
+      const r = out.row, at = hm(nextSlot);
+      if (out.stopped === "kill") lastSummary = `**Killed during the ${at} round.** The database still holds every completed round (${db.length}) and nothing half-written. Choose when to restart, then press **Restart**.`;
       else {
         const failed = ["phoenix", "kraken", "coinbase"].filter((v) => !r.venues[v].ok).map((v) => VENUE_LABEL[v]);
-        lastSummary = `**Tick ${slot} stored.** ${failed.length ? `${failed.join(" and ")} failed and ${failed.length === 1 ? "is" : "are"} recorded with the error; the other venues are in the tick as normal. ` : "All three books are in. "}Reference mid: ${r.ref ? "$" + r.ref.toFixed(3) + " (" + r.refNote + ")" : "none"}. Jupiter: ${r.okQ} of ${r.quotes} quotes OK.${out.stopped === "ctrlc" ? " Ctrl+C: the collector finished this tick, committed it, and exited." : ""}`;
+        lastSummary = `**Round ${at} stored.** ${failed.length ? `${failed.join(" and ")} failed and ${failed.length === 1 ? "is" : "are"} recorded with the error; the other venues are in the round as normal. ` : "All three books are in. "}Reference mid: ${r.ref ? "$" + r.ref.toFixed(3) + " (" + r.refNote + ")" : "none"}. Jupiter: ${r.okQ} of ${r.quotes} quotes OK.${out.stopped === "ctrlc" ? " Ctrl+C: the collector finished this round, committed it, and exited." : ""}`;
       }
       nextSlot += 300;
       paint();
@@ -245,7 +245,7 @@
 
     function resume() {
       if (running) return;
-      const lastAttempt = nextSlot - 300;           // the slot that was being collected
+      const lastAttempt = nextSlot - 300;           // the window that was being collected
       const now = lastAttempt + 60 + restartAfter * 60; // stopped about a minute into it
       const current = Math.floor((now - START) / 300) * 300 + START;
       const log = [];
@@ -253,7 +253,7 @@
       running = true;
       let slot = current, late = now - current;
       if (db.some((r) => r.ts === slot)) {
-        log.push([now, `Tick ${hm(slot)} already stored, skipping`]);
+        log.push([now, `Round ${hm(slot)} already stored, skipping`]);
         slot += 300; late = 0;
         log.push([now, `Sleeping until ${hm(slot)}`]);
       }
@@ -262,7 +262,7 @@
       const out = collect(slot, late);
       lastLog = log.concat(out.log);
       nextSlot = slot + 300;
-      lastSummary = `**Resumed.** ${lost.length ? `No row for ${lost.join(", ")}: that slot passed while the process was down, so it is a gap in the data (charts break their lines there). ` : "No slot was lost. "}${out.row ? `Tick ${hm(slot)} collected${late > 1 ? ` ${Math.round(late / 60)} min late` : ""}.` : ""}`;
+      lastSummary = `**Resumed.** ${lost.length ? `No row for ${lost.join(", ")}: that 5-minute window passed while the process was down, so it is a gap in the data (charts break their lines there). ` : "No round was lost. "}${out.row ? `Round ${hm(slot)} collected${late > 1 ? ` ${Math.round(late / 60)} min late` : ""}.` : ""}`;
       paint();
     }
 
@@ -286,9 +286,9 @@
       clear(dbBox);
       if (db.length) {
         dbBox.appendChild(ui.Table({
-          caption: "What the database holds (one row per stored tick)", dense: true,
+          caption: "What the database holds (one row per stored round)", dense: true,
           columns: [
-            { key: "tick", label: "Tick", align: "left" },
+            { key: "round", label: "Round", align: "left" },
             { key: "phoenix", label: "Phoenix", align: "left" },
             { key: "kraken", label: "Kraken", align: "left" },
             { key: "coinbase", label: "Coinbase", align: "left" },
@@ -296,7 +296,7 @@
             { key: "jup", label: "Jupiter quotes" },
           ],
           rows: db.map((r) => ({
-            tick: hm(r.ts) + (r.late > 1 ? " (late)" : ""),
+            round: hm(r.ts) + (r.late > 1 ? " (late)" : ""),
             phoenix: cell(r.venues.phoenix), kraken: cell(r.venues.kraken), coinbase: cell(r.venues.coinbase),
             ref: r.ref ? `$${r.ref.toFixed(3)} · ${r.refNote}` : "none",
             jup: r.quotes ? `${r.okQ} / ${r.quotes} ok` : "skipped",
@@ -310,12 +310,12 @@
         const n = db.length, ok = db.filter((r) => r.venues[v].ok).length, retries = db.reduce((a, r) => a + (r.venues[v].attempts - 1), 0);
         return `${VENUE_LABEL[v]} ${ok}/${n} ok, ${retries} retr${retries === 1 ? "y" : "ies"}`;
       });
-      statusBox.appendChild(h("p", { class: "fine mono", text: `status → ${db.length} tick${db.length === 1 ? "" : "s"} · ${health.join(" · ")} · process ${running ? "running" : "stopped"}` }));
+      statusBox.appendChild(h("p", { class: "fine mono", text: `status → ${db.length} round${db.length === 1 ? "" : "s"} · ${health.join(" · ")} · process ${running ? "running" : "stopped"}` }));
     }
     paintFaults(); paint();
 
     return h("div", { class: "stack" },
-      h("div", null, h("p", { class: "fine", text: "Switch on any failures, then run a tick:" }), h("div", { class: "btn-row", attrs: { role: "group", "aria-label": "Failures to simulate" } }, faultBtns)),
+      h("div", null, h("p", { class: "fine", text: "Switch on any failures, then run a round:" }), h("div", { class: "btn-row", attrs: { role: "group", "aria-label": "Failures to simulate" } }, faultBtns)),
       h("div", { class: "grid-2" },
         h("div", null, h("p", { class: "fine", text: "During the Jupiter quotes:" }), interruptSeg),
         h("div", null, h("p", { class: "fine", text: "After a stop, restart:" }), restartSeg)),
@@ -349,19 +349,19 @@
         ui.prose(`
 The project is a [[pipeline]]: an assembly line where each station does one job and hands its output to the next. **Fetch** the books, **normalize** them into one shape, **store** them, replay them through the **engine**, **analyze** the results, **report**. Each station is one or two Python files, and none of them knows how the others work inside. That is what lets you swap a station (a new venue, a new metric) without touching the rest.
 
-The interesting station is the first one. The [[collector]] was built to run for 24 hours, calling four public services every 5 minutes: 288 snapshot rounds a day, each with three books and 48 [[jupiter|Jupiter]] quotes.${coverage} Over a day, something *will* go wrong: a timeout, an overloaded server, a [[rate-limit|rate limit]], a laptop that goes to sleep. Good design means deciding in advance what happens each time.`),
+The interesting station is the first one. The [[collector]] was built to run for 24 hours, calling four public services every 5 minutes: 288 snapshot rounds a day (the project's code calls a round a "tick"; in this course a tick is only the price step), each with three books and 48 [[jupiter|Jupiter]] quotes.${coverage} Over a day, something *will* go wrong: a timeout, an overloaded server, a [[rate-limit|rate limit]], a laptop that goes to sleep. Good design means deciding in advance what happens each time.`),
         ui.prose(`
 The collector's rules:
 
 - **Fetch every venue at the same moment**, one thread each, so no book is seconds older than another.
-- **Isolate failures.** If Kraken times out, the tick still stores Phoenix and Coinbase, plus a Kraken row that says "failed after 4 attempts" and why. That is [[fault-isolation|fault isolation]].
+- **Isolate failures.** If Kraken times out, the round still stores Phoenix and Coinbase, plus a Kraken row that says "failed after 4 attempts" and why. That is [[fault-isolation|fault isolation]].
 - **Retry politely**: wait 1, 2, then 4 seconds with a little randomness ([[exponential-backoff|exponential backoff]]), and if a server says "Retry-After: 2", wait exactly that long.
-- **Write each tick in one [[db-transaction|database transaction]]**, so a crash leaves the whole tick or none of it.
-- **Resume after a restart**: \`collect --resume\` carries on with the same run and skips ticks already stored. Ctrl+C finishes the current tick first.
+- **Write each round in one [[db-transaction|database transaction]]**, so a crash leaves the whole round or none of it.
+- **Resume after a restart**: \`collect --resume\` carries on with the same run and skips rounds already stored. Ctrl+C finishes the current round first.
 - **Protect the run from its author.** The run used its own copy of the code (a pinned git worktree), so edits made during the day couldn't change it halfway.`),
         ui.Callout({
-          kind: "project", title: "SQLite, not Parquet: the reasoning",
-          body: "[[sqlite|SQLite]] is built into Python, survives a crash mid-write, enforces \"one row per venue per tick\" with a unique key, and answers `status` and `report` with plain SQL. A day is 288 ticks, an estimated 15 MB. Parquet, a columnar file format, wins when you scan millions of rows for a few columns. At exchange scale the answer flips: append to a log, then compact it into Parquet files split by day and market.",
+          kind: "project", open: true, title: "SQLite, not Parquet: the reasoning",
+          body: "[[sqlite|SQLite]] is built into Python, survives a crash mid-write, enforces \"one row per venue per round\" with a unique key, and answers `status` and `report` with plain SQL. A day is 288 rounds, an estimated 15 MB. Parquet, a columnar file format, wins when you scan millions of rows for a few columns. At exchange scale the answer flips: append to a log, then compact it into Parquet files split by day and market.",
         }),
         ui.prose(`
 **What changes at exchange scale?** This project matches one book at a time, in Python, and nobody is waiting for the answer. A real exchange matches thousands of books for thousands of traders, and every microsecond counts:
@@ -378,18 +378,18 @@ The collector's rules:
         label: "Figure 12.1",
         children: buildPipeline(ctx),
         caption: "Click a station (or Tab to it and press Enter) to see what it does, which files do it, and the decision behind it. Data flows left to right, step 1 to step 6.",
-        alt: "The project's pipeline in six steps. 1 Fetch: collector.py, venues.py and net.py fetch Phoenix, Kraken, Coinbase and Jupiter every 5 minutes. 2 Normalize: snapshot.py turns every venue into integer ticks and lots. 3 Store: store.py writes each tick to SQLite in one transaction. 4 Engine: orderbook.py replays the book and impact.py simulates market orders. 5 Analyze: metrics.py and timeseries.py compute costs against the reference mid and aggregate them. 6 Report: report.py and export.py write REPORT.md, charts and the course data.",
+        alt: "The project's pipeline in six steps. 1 Fetch: collector.py, venues.py and net.py fetch Phoenix, Kraken, Coinbase and Jupiter every 5 minutes. 2 Normalize: snapshot.py turns every venue into integer rounds and lots. 3 Store: store.py writes each round to SQLite in one transaction. 4 Engine: orderbook.py replays the book and impact.py simulates market orders. 5 Analyze: metrics.py and timeseries.py compute costs against the reference mid and aggregate them. 6 Report: report.py and export.py write REPORT.md, charts and the course data.",
       }));
 
       // ---------------- Try
       const tryEl = ctx.section("try", "Break a venue");
       tryEl.append(ui.TryIt({
-        title: "A collector tick, with failures you choose",
-        intro: "Run a normal tick first. Then switch on **Kraken times out** and run another: what gets stored? Switch on both exchange failures at once and watch the reference mid. Finally choose **Power cut** and run a tick, then restart after 8 minutes and look for the gap.",
+        title: "A collector round, with failures you choose",
+        intro: "Run a normal round first. Then switch on **Kraken times out** and run another: what gets stored? Switch on both exchange failures at once and watch the reference mid. Finally choose **Power cut** and run a round, then restart after 8 minutes and look for the gap.",
         children: h("div", { class: "stack" },
           buildSimulator(ctx),
           ui.NumberCheck({
-            question: "Your turn: Kraken times out on every attempt. How many requests does `net.py` send to Kraken in that tick before it records the failure?",
+            question: "Your turn: Kraken times out on every attempt. How many requests does `net.py` send to Kraken in that round before it records the failure?",
             answer: 4, tolerance: 0, unit: "requests",
             explain: "**4**: the first try plus 3 retries, with waits of about 1, 2 and 4 seconds between them. With a 15-second timeout each, Kraken's thread gives up after roughly a minute, while the other threads finished long before.",
             hint: "Count the first attempt as well as the retries. `net.py` allows 3 retries.",
@@ -397,9 +397,9 @@ The collector's rules:
       }),
       ui.Callout({
         kind: "real", title: "The real run's one gap, and why it stayed",
-        body: `The collector run started at 05:09 UTC. The collector began with the slot it was in, 05:05, and that tick took 105 seconds (mostly the paced Jupiter quotes), so it finished at 05:11, already inside the 05:10 slot. The pinned code skipped a slot it had run into, so 05:10 is missing: it is the break in chapter 11's charts.
+        body: `The collector run started at 05:09 UTC. The collector began with the 5-minute window it was in, 05:05, and that round took 105 seconds (mostly the paced Jupiter quotes), so it finished at 05:11, already inside the 05:10 window. The pinned code skipped a window it had run into, so 05:10 is missing: it is the break in chapter 11's charts.
 
-The fix, "collect a slot late instead of skipping it" (what this simulator does), was committed five minutes after the run started. The run was deliberately left on its pinned commit, so every tick of the day is collected by the same code.`,
+The fix, "collect a round late instead of skipping it" (what this simulator does), was committed five minutes after the run started. The run was deliberately left on its pinned commit, so every round of the day is collected by the same code.`,
       }),
       ui.Callout({
         kind: "note", title: "What the model leaves out",
@@ -409,22 +409,22 @@ The fix, "collect a slot late instead of skipping it" (what this simulator does)
 
     quiz: [
       {
-        q: "During one tick, Kraken times out on every attempt. What does the database hold for that tick?",
+        q: "During one round, Kraken times out on every attempt. What does the database hold for that round?",
         options: [
-          { text: "Nothing: one failed venue makes the collector throw the whole tick away", why: "That would lose two good books because of one bad one. Each venue is fetched in its own thread and its errors are caught, so the tick is stored without Kraken." },
+          { text: "Nothing: one failed venue makes the collector throw the whole round away", why: "That would lose two good books because of one bad one. Each venue is fetched in its own thread and its errors are caught, so the round is stored without Kraken." },
           { text: "Phoenix's and Coinbase's books, a Kraken row marked failed with its error and 4 attempts, and a reference mid from Coinbase alone", why: "Right. Failures are isolated and recorded, not hidden. The reference mid is the mean of whichever exchange mids are available, here Coinbase's only." },
           { text: "All three books: the collector waits as long as it takes for Kraken to answer", why: "The collector never waits forever: each request has a 15-second timeout and there are 3 retries. After that it records the failure and moves on." },
-          { text: "Kraken's book from the previous tick, copied forward so the data has no holes", why: "Copying old data forward would make Kraken look like it had a book it didn't show. The row says honestly that the fetch failed." },
+          { text: "Kraken's book from the previous round, copied forward so the data has no holes", why: "Copying old data forward would make Kraken look like it had a book it didn't show. The row says honestly that the fetch failed." },
         ],
         answer: 1,
       },
       {
-        q: "The laptop loses power during the Jupiter quotes of the **12:05** tick. You run `collect --resume` at **12:13**. What does the database contain afterwards?",
+        q: "The laptop loses power during the Jupiter quotes of the **12:05** round. You run `collect --resume` at **12:13**. What does the database contain afterwards?",
         options: [
-          { text: "Half of the 12:05 tick (the books, without the quotes), then 12:10", why: "The tick is written in one transaction at the end, so a crash never leaves part of a tick. The books for 12:05 were only in memory." },
-          { text: "Every tick up to 12:00, then 12:10 collected a little late at 12:13; 12:05 is a gap", why: "Right. Completed ticks survived. On restart, the collector collects the slot it is in (12:10) straight away and notes the delay; the 12:05 slot passed while it was down." },
-          { text: "A duplicate of 12:00, because resuming starts the run again", why: "Resume continues the same run, and a unique key on the tick time means a stored tick is skipped, never duplicated." },
-          { text: "A 12:05 tick filled with the 12:13 books", why: "That would put data from the wrong time under the 12:05 label. The collector only collects the slot it is actually in." },
+          { text: "Half of the 12:05 round (the books, without the quotes), then 12:10", why: "The round is written in one transaction at the end, so a crash never leaves part of a round. The books for 12:05 were only in memory." },
+          { text: "Every round up to 12:00, then 12:10 collected a little late at 12:13; 12:05 is a gap", why: "Right. Completed rounds survived. On restart, the collector collects the 5-minute window it is in (12:10) straight away and notes the delay; the 12:05 window passed while it was down." },
+          { text: "A duplicate of 12:00, because resuming starts the run again", why: "Resume continues the same run, and a unique key on the round time means a stored round is skipped, never duplicated." },
+          { text: "A 12:05 round filled with the 12:13 books", why: "That would put data from the wrong time under the 12:05 label. The collector only collects the 5-minute window it is actually in." },
         ],
         answer: 1,
       },

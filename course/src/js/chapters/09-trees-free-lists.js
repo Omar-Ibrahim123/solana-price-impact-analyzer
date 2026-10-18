@@ -305,7 +305,7 @@ In an ordinary program each node would hold [[pointer|pointers]]: the memory add
 
 A fixed array raises a new question: when an order leaves the book, what happens to its node? It goes on the [[free-list|free list]], a [[linked-list|linked list]] of empty nodes threaded through the nodes themselves. Think of a coat check: returned tickets go on top of a pile, and the next guest gets the top ticket. The freed node's first link (its *left* register) now holds the number of the next free node, and the tree header remembers the head of the pile. A new order takes the head, so the most recently freed node is reused first, like a [[stack]]. Only when the pile is empty does the tree use a fresh node at the [[bump-index|bump index]], the boundary of never-touched space, and move the boundary up by one. The code that hands nodes out and takes them back is called an *allocator*; Phoenix's comes from a small library called \`sokoban\`.`),
         ui.Callout({
-          kind: "project", title: "Checked on the real bytes",
+          kind: "project", open: true, title: "Checked on the real bytes",
           body: `${R ? `In the read shown in the [hex explorer](#/play/hex) (slot ${fmt.int(R.slot)}): bids tree bump index **${fmt.int(R.bump)}**, so nodes 1–${fmt.int(R.bump - 1)} have been used. **${fmt.int(R.live)}** hold live orders, so **${fmt.int(R.freed)}** are on the free list (${fmt.int(R.freed)} + ${fmt.int(R.live)} = ${fmt.int(R.bump - 1)}), and **${fmt.int(R.never)}** of the ${fmt.int(R.capacity)} have never been touched.
 
 ` : ""}An earlier full check of the whole account (slot 458,325,932) also read the asks tree (341 live, 958 freed, bump index 1,300), confirmed that in both trees no red node had a red child and every path had the same number of black nodes, and found that the freed bid nodes still held old orders adding up to about **7,375 SOL**. So \`phoenix.py\` never walks the tree. It reads every node from 1 to bump_index − 1, follows the free list to mark the freed ones, drops them, and sorts the rest by price and sequence number. Sorting a couple of thousand items is instant for a computer.`,
@@ -341,7 +341,7 @@ A fixed array raises a new question: when an order leaves the book, what happens
           explain: "Node 4 was freed last, so it sits on top of the free list. The next bid after that takes node 2, and only then does the array use node 6 at the bump index. Try it in the widget above.",
           hint: "The free list is a pile: the node freed most recently is on top. Fresh nodes from the bump index are used only when the pile is empty.",
         }),
-        ui.CodeExercise(FREE_LIST_EX));
+        ui.ForProgrammers({ title: "Exercise · A free-list allocator in code", children: ui.CodeExercise(FREE_LIST_EX) }));
     },
 
     quiz: [

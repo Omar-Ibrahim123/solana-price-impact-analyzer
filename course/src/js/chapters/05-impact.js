@@ -489,7 +489,7 @@ One more rule keeps these numbers honest. Phoenix's raw book also held [[junk-qu
       {
         q: "Venue A has a 2 bps spread and 20 SOL per price level. Venue B has a 12 bps spread and 800 SOL per level. Which is cheaper for a $1,000 buy, and for a $1,000,000 buy?",
         options: [
-          { text: "A for both: a tighter spread is always cheaper", why: "The spread only sets where the impact curve starts. A $1M order on A must climb thousands of thin levels, so its depth cost swamps the 10 bps it saved on the spread." },
+          { text: "A for both: a tighter spread is always cheaper", why: "The spread only sets where the impact curve starts. A $1M order on A must climb hundreds of thin levels (about 480), so its depth cost swamps the 10 bps it saved on the spread." },
           { text: "A for $1,000, B for $1,000,000", why: "A $1,000 buy (under 10 SOL) fits in the first level of either venue, so it pays only the half-spread: 1 bps on A against 6 bps on B. A $1M buy (about 9,600 SOL) climbs hundreds of A's levels but only a dozen of B's, so B's depth wins. The curves cross in between." },
           { text: "B for both: a deeper book is always cheaper", why: "Depth only helps once a trade is bigger than the first level. A $1,000 buy never leaves the best ask, so it pays B's half-spread of 6 bps instead of A's 1 bps." },
           { text: "They cost the same, because the mid is the same", why: "The same mid is the starting point, but the two books offer different prices around it. Impact depends on the spread and on how much size sits at each level." },

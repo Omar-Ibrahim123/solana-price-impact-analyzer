@@ -380,7 +380,7 @@ A neat consequence: one lot at one tick is 0.001 SOL × $0.001 = $0.000001, exac
           explain: `${fmt.int(nc.t)} × ${fmt.int(nc.l)} = ${fmt.int(nc.t * nc.l)} USDC atoms (one lot at one tick is one atom), and ÷ 1,000,000 = **$${formatUnits(BI(nc.t) * BI(nc.l), 6, 2)}**. Equivalently: $89.036 × 61.295 SOL.`,
           hint: "Convert first: ticks × $0.001 gives the price, lots × 0.001 gives the SOL. Multiply the two. (Or multiply ticks × lots to get USDC atoms and divide by 1,000,000.)",
         }),
-        ui.CodeExercise(EX_TICKS),
+        ui.ForProgrammers({ title: "Exercise 6 · Ticks and lots in code", children: ui.CodeExercise(EX_TICKS) }),
         ui.p("More practice: chapter 6's exercises build the engine these integers flow through, and the [code lab](#/play/code) has every exercise in one place."));
     },
 

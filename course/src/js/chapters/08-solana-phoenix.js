@@ -71,7 +71,7 @@
   const HEADER_FIELDS = [
     ["discriminant", 0, 8, "bytes", () => "A fixed 8-byte tag at the very start. The program checks it first, so nobody can trick it into treating some other account as a market."],
     ["status", 8, 8, "u64", (d, v) => `The market's state, as a number: 0 uninitialized, 1 active, 2 post-only, 3 paused, 4 closed, 5 tombstoned. ${STATUS_NAMES[v] ? `Here it is ${v}: ${STATUS_NAMES[v]}.` : `Here it is ${v}.`}`],
-    ["bids_size", 16, 8, "u64", (d, v) => `Room for ${v} bids. The whole bids tree, ${v} slots of 64 bytes, was set aside when the market was created, before a single order arrived.`],
+    ["bids_size", 16, 8, "u64", (d, v) => `Room for ${v} bids. The whole bids tree, ${v} nodes of 64 bytes, was set aside when the market was created, before a single order arrived.`],
     ["asks_size", 24, 8, "u64", (d, v) => `Room for ${v} asks, set aside up front in the same way.`],
     ["num_seats", 32, 8, "u64", (d, v) => `Room for ${v} trader seats: the size of the traders tree, which holds every trader's balances. Like bids_size it is a capacity. Together the three sizes fix the account's length exactly.`],
     ["base_decimals", 40, 4, "u32", () => "SOL has 9 decimals: 1 SOL = 1,000,000,000 lamports, its smallest unit."],
@@ -227,7 +227,7 @@
     seg(t1, ax, tx - ax, 46, 40, "box-ask", "▼ asks", "t-bold t-ask");
     seg(t1, tx, X0 + W - tx, 46, 40, "box", "trader seats");
     t1.appendChild(h("text", { x: tx + (X0 + W - tx) / 2, y: 104, "text-anchor": "middle", class: "t-muted", text: `${fmt.int(sizes.seats)} seats · ${fmt.num(R.tradersLen / 1e6, 2)} MB` }));
-    t1.appendChild(h("text", { x: bx + (tx - bx) / 2, y: 104, "text-anchor": "middle", class: "t-muted", text: `${fmt.int(sizes.bids)} + ${fmt.int(sizes.asks)} slots` }));
+    t1.appendChild(h("text", { x: bx + (tx - bx) / 2, y: 104, "text-anchor": "middle", class: "t-muted", text: `${fmt.int(sizes.bids)} + ${fmt.int(sizes.asks)} nodes` }));
     // step 2: collector bracket (above the bar)
     const t2 = g();
     t2.appendChild(h("path", { class: "line-accent", d: `M ${X0} 41 v -7 H ${tx} v 7` }));
@@ -374,7 +374,13 @@
       if (f.node && opts2.fromGrid !== false) showNode(f.node, false);
     }
     grid.addEventListener("pointerover", (e) => { const c = e.target.closest(".hex-b"); if (c) select(+c.dataset.i); });
-    grid.addEventListener("click", (e) => { const c = e.target.closest(".hex-b"); if (c) { select(+c.dataset.i); grid.focus({ preventScroll: true }); } });
+    grid.addEventListener("click", (e) => {
+      const c = e.target.closest(".hex-b");
+      if (!c) return;
+      select(+c.dataset.i); grid.focus({ preventScroll: true });
+      // On a phone the explanation sits below the grid: bring it into view after a tap.
+      if (document.documentElement.clientWidth < 700) detail.scrollIntoView({ block: "nearest" });
+    });
     grid.addEventListener("focus", () => { if (cur < 0) select(0); });
     grid.addEventListener("keydown", (e) => {
       const map = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: perRow, ArrowUp: -perRow, PageDown: perRow * 8, PageUp: -perRow * 8 };
@@ -431,11 +437,12 @@
 
     const counts = { live: 0, free: 0, unused: 0 };
     dec.nodes.forEach((n) => counts[n.status]++);
-    const src = h("p", { class: "fine" }, ui.rich(`${ctx.data.active().source === "builtin" ? "Real bytes" : "Bytes from your file"}: the first ${fmt.int(bytes.length)} bytes of the Phoenix SOL/USDC market account${dec.accountLen ? ` (of ${fmt.int(dec.accountLen)})` : ""}${dec.slot ? `, read at slot ${fmt.int(dec.slot)}` : ""}. That covers the header, the market fields, the bids tree header and its first ${dec.nodes.length} nodes: ${counts.live} live, ${counts.free} freed${counts.unused ? `, ${counts.unused} never used` : ""}.`));
+    const src = h("p", { class: "fine" }, ui.rich(`${ctx.data.active().source === "builtin" ? "Real bytes" : "Bytes from your file"}: the first ${fmt.int(bytes.length)} bytes of the Phoenix SOL/USDC market account${dec.accountLen ? ` (of ${fmt.int(dec.accountLen)})` : ""}${dec.slot ? `, read at Solana slot ${fmt.int(dec.slot)}${ctx.data.active().source === "builtin" ? " during the collector run (a later read than the 04:31 snapshot, which is slot 458,302,883)" : ""}` : ""}. That covers the header, the market fields, the bids tree header and its first ${dec.nodes.length} nodes: ${counts.live} live, ${counts.free} freed${counts.unused ? `, ${counts.unused} never used` : ""}.`));
 
     wrap.append(src, legend,
       h("div", { class: "hexview" }, h("div", { class: "hex-scroll", style: { maxHeight: "360px" } }, grid), detail),
       h("h4", { text: "Nodes in this slice" }),
+      ui.p("Nodes sit in the array in the order they were handed out, not in price order; the tree's links give the price order. That is why the first live bids here are far from the best price.", "fine"),
       h("div", { class: "btn-row" }, nodeBtns),
       h("h4", { text: "One order, decoded" }),
       nodeBox);
@@ -487,13 +494,13 @@
       const ex = ctx.section("explain", "Lockers, keys and a 400 ms clock");
       ex.append(
         ui.prose(`
-[[solana|Solana]] is a [[blockchain]]: many independent computers keep identical copies of the same data. That data lives in [[account|accounts]]. An account is a row of [[byte|bytes]] with an [[address]] and an owner. Think of a locker with a glass door: anyone can look inside, but only one [[program]] holds the key to change what's in it.
+[[solana|Solana]] is the kind of [[blockchain]] [chapter 7](#/learn/7) sketched: about a thousand independent computers, the [[validator|validators]], keep identical copies of the same data. That data lives in [[account|accounts]]. An account is a row of [[byte|bytes]] with an [[address]] and an owner. Think of a locker with a glass door: anyone can look inside, but only one [[program]] holds the key to change what's in it.
 
 Programs are the code. They hold no data of their own. To do anything, you send a [[transaction]] that names a program, lists every account it will read or write, and asks for an [[instruction]] such as "place a bid". The program reads those accounts, changes their bytes, and either all of it happens or none of it does.
 
-Time on Solana is counted in [[slot|slots]] of about 400 milliseconds. In each slot one [[validator]] packs transactions into a block, and every other validator runs the same programs on the same bytes, in the same order, and must get exactly the same bytes out. That is the [[determinism]] from [chapter 7](#/learn/7).`),
+Time on Solana is counted in [[slot|slots]] of about 400 milliseconds. In each slot one validator, the slot's leader, packs transactions into a block, and every other validator runs the same programs on the same bytes, in the same order, and must get exactly the same bytes out. That is the [[determinism]] from [chapter 7](#/learn/7).`),
         ui.prose(`
-[[phoenix|Phoenix]], built by [[ellipsis-labs|Ellipsis Labs]], keeps an entire market in **one account**. On SOL/USDC that account is 1,723,488 bytes (about 1.7 MB): a [[header]], the bids and the asks, each a [[red-black-tree|red-black tree]] with room for 4,096 orders, and a tree of [[seat|trader seats]] holding every trader's balances. All of that space is reserved when the market is created, so the account doesn't grow as orders arrive. Solana does let a program grow its own account, but only by up to 10 KiB per instruction (10 MiB at most), and a bigger account must hold more [[rent]]. Allocating the whole market up front avoids all that, and a fixed layout lets the program work on the bytes in place.
+[[phoenix|Phoenix]], built by [[ellipsis-labs|Ellipsis Labs]], keeps an entire market in **one account**. On SOL/USDC that account is 1,723,488 bytes (about 1.7 MB): a [[header]], the bids and the asks, each a [[red-black-tree|red-black tree]] (a sorted tree that keeps itself balanced, explained in [chapter 9](#/learn/9)) with room for 4,096 orders, and a tree of [[seat|trader seats]] holding every trader's balances. All of that space is reserved when the market is created, so the account doesn't grow as orders arrive. Solana does let a program grow its own account, but only by up to 10 KiB per instruction (10 MiB at most), and a bigger account must hold more [[rent]]. Allocating the whole market up front avoids all that, and a fixed layout lets the program work on the bytes in place.
 
 Because the book and the balances sit in the same place, one transaction can do the whole trade. A taker's order is matched against the book, the makers' seats are credited, and the taker's tokens move in and out of the market's [[vault|vaults]], all at once. Nothing is left over for later, which is why Phoenix is called [[crankless]]. Older Solana order books such as Serum matched first and left the results in a queue; someone had to send separate "crank" transactions to finish settling.`),
         ui.Callout({
@@ -503,7 +510,9 @@ Because the book and the balances sit in the same place, one transaction can do 
         ui.prose(`
 To see the book, this project asks any Solana [[rpc|RPC]] node for the account's bytes with one call, \`getAccountInfo\`. The answer is the bytes (in [[base64]]) and the slot they were read at. Then \`phoenix.py\` [[decoding|decodes]] them with no Phoenix library at all: it knows each field's [[offset]] and size, and reads it with Python's \`struct\` module.
 
-Most fields are [[u64]] numbers: 8 bytes each, stored [[little-endian|little-endian]], which means the smallest byte comes first. We write bytes in [[hex]], two digits each. The bids size at offset 16 is stored as \`00 10 00 00 00 00 00 00\`. Read right to left, that is hex \`1000\`, which is 16 × 256 = **4,096**.`),
+**A quick hex primer.** Raw bytes are written in [[hex]] (base 16). Hex counts in sixteens: its digits are 0–9 and then a–f for ten to fifteen, so hex \`0a\` is 10, \`10\` is 16 (one sixteen, no ones) and \`ff\` is 15 × 16 + 15 = 255. One [[byte]] holds a number from 0 to 255, so it is always exactly two hex digits.
+
+Most fields are [[u64]] numbers: 8 bytes each, stored [[little-endian|little-endian]], which means the smallest byte comes first. Byte 0 counts ×1, byte 1 counts ×256, byte 2 counts ×65,536 (256 × 256), and so on. The bids size at offset 16 is stored as \`00 10 00 00 00 00 00 00\`. Byte 0 is \`00\`, so it adds nothing. Byte 1 is \`10\`, which is 16, and it counts ×256. The other six bytes are zero. So the number is 16 × 256 = **4,096**.`),
         ui.Callout({
           kind: "project", title: "In this project: phoenix.py",
           body: "`struct.unpack_from(\"<Q\", data, 16)` reads that number: `<` means little-endian and `Q` means an unsigned 8-byte integer. The collector stores only `data[:order_trees_end(header)]`, the first 525,232 bytes (header plus both trees), because the 1.2 MB of trader seats isn't needed to rebuild the book.",
@@ -530,12 +539,12 @@ Most fields are [[u64]] numbers: 8 bytes each, stored [[little-endian|little-end
       tr.append(
         ui.TryIt({
           title: "Hex explorer: Phoenix SOL/USDC",
-          intro: "These are real bytes from the Phoenix market account. **Hover or tap any byte** to see its field, how its bytes are read and what it means. Try the chips to jump around: find `bids_size` at offset 16, then compare a **live** node with a **freed** one, and read the decoded order below the grid.",
+          intro: "These are real bytes from the Phoenix market account. **Hover or tap any byte** to see its field, how its bytes are read and what it means. The coloured chips above the grid jump to the start of each region. Find `bids_size` at offset 16 (the third field of the header), then use the node buttons below the grid to compare a **live** node with a **freed** one, and read the decoded order.",
           children: box,
         }),
         checkBox,
         ui.Callout({
-          kind: "project", title: "A bug the real bytes caught",
+          kind: "project", open: true, title: "A bug the real bytes caught",
           body: "Version 1 of this project sorted bids by the sequence number *as stored*. Since the stored value is NOT seq, a smaller stored value means a newer order, so within one price v1 put the newest bid first. Prices and impact were unaffected (every order at one price fills at that price), but who fills first was wrong. Version 2 found it by looking at real bytes: un-flipped, bid numbers land in the same range as the asks' plain ones and below the market's next number. `phoenix.py` now un-flips them on read, and a test checks it.",
         }));
     },
@@ -555,9 +564,9 @@ Most fields are [[u64]] numbers: 8 bytes each, stored [[little-endian|little-end
         q: "Eight bytes are stored as `00 10 00 00 00 00 00 00`. Read as a little-endian u64, what number is it?",
         options: [
           { text: "16", why: "0x10 is 16, but it sits in the second byte, which counts 256 times as much as the first. 16 × 256 = 4,096." },
-          { text: "4,096", why: "Little-endian puts the smallest byte first, so read right to left: hex 0x1000 = 16 × 256 = 4,096. This is bids_size in the real header." },
+          { text: "4,096", why: "Little-endian puts the smallest byte first. Byte 0 is 00; byte 1 is hex 10 = 16, and byte 1 counts ×256. So 16 × 256 = 4,096. This is bids_size in the real header." },
           { text: "4,503,599,627,370,496", why: "That is the bytes read left to right (big-endian): 0x0010000000000000. Phoenix stores its integers little-endian." },
-          { text: "1,000", why: "\"10\" here is hex, not decimal, and the trailing zeros are separate bytes. Reverse the bytes and read hex 0x1000 = 4,096." },
+          { text: "1,000", why: "\"10\" here is hex, not decimal: it means 16. And it sits in byte 1, which counts ×256, so the number is 16 × 256 = 4,096." },
         ],
         answer: 1,
       },

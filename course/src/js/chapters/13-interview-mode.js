@@ -173,7 +173,7 @@ Finally, connect to who you're talking to. [[ellipsis-labs|Ellipsis Labs]] build
           children: buildDrill(ctx),
         }),
         ui.Callout({
-          kind: "project", title: "Your rehearsal space",
+          kind: "project", open: true, title: "Your rehearsal space",
           body: `The [interview page](#/interview) has ${(OBZ.interview && OBZ.interview.questions.length) || "40-plus"} questions with model answers in eight topics, a 60-second pitch builder with a timer, ${(OBZ.interview && OBZ.interview.cards.length) || "40"} flashcards covering every chapter, and the follow-ups a good interviewer will ask.`,
         }));
     },

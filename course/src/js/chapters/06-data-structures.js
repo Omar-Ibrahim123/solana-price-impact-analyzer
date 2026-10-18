@@ -574,7 +574,7 @@ The rules from chapters 3 and 4: best price first (\`book.prices[0]\` is the low
       "Say what Big-O means in plain words, with O(1), O(log n) and O(n) examples",
       "Name the engine's three structures and what each one is for",
       "Give the cost of add, cancel and match, with the reason for each",
-      "Write append, unlink, cancel and the matching loop yourself, and pass the tests",
+      "Optional, for programmers: write append, unlink, cancel and the matching loop yourself, and pass the tests",
     ],
     status: "ready",
     exercises: EXERCISES,
@@ -615,7 +615,7 @@ The engine in \`orderbook.py\` combines three [[data-structure|data structures]]
         ui.prose(`
 In one sentence: **everything that touches a single order is O(1); only creating or deleting a whole price level costs O(log L).** Why not a plain list sorted by price and time? Cancelling would mean searching it, O(n). Why not a [[heap]] (a tree that always keeps the smallest or largest item on top)? It finds the best price fast, but a plain heap can't find an arbitrary entry without an extra index (with a position map it can delete one in O(log n)), and it can't look up a price level at all.`),
         ui.Callout({
-          kind: "project", title: "Measured, not just claimed",
+          kind: "project", open: true, title: "Measured, not just claimed",
           body: `The project's benchmark replays one million random adds, cancels and market orders through \`orderbook.py\` and times each call ([[nanosecond|ns]] = a billionth of a second). The ranking matches the Big-O story: a cancel is the cheapest real operation; a new level costs about 600 ns more than joining one; market orders have the long tail because big ones sweep several levels. Throughput: **757,703 events per second**, in pure Python.`,
           children: ui.Table({
             caption: "benchmarks/bench_engine.py, 1M events, Python 3.14 (from the README)",
@@ -648,10 +648,10 @@ In one sentence: **everything that touches a single order is O(1); only creating
           intro: "Add asks at any of four prices, cancel by id, or send a market buy. Each line below is an event the real engine reported. Try: cancel the middle order of a queue; cancel an id twice; buy more SOL than the book holds.",
           children: buildSandbox(ctx),
         }),
-        h("h3", { text: "Coding exercises" }),
+        ui.ForProgrammers({ title: "Coding exercises: build the engine yourself", children: [
         ui.p("Five small functions that together make a working engine. They are in JavaScript so they run right here, in a sandbox with a time limit; the ideas map one to one onto `orderbook.py`. Each has tests, three hints that get more specific, and a reference solution. Your code and progress are saved in this browser, and the [code lab](#/play/code) collects every exercise in the course."),
-        ...EXERCISES.map((x) => ui.CodeExercise(x)),
-        h("h3", { text: "Practice on LeetCode" }),
+        ...EXERCISES.map((x) => ui.CodeExercise(x))] }),
+        ui.ForProgrammers({ title: "Practice on LeetCode", children: [
         ui.p("The same ideas appear in classic interview problems. Start at the top."),
         ui.Table({
           caption: "Suggested problems, in order",
@@ -661,7 +661,7 @@ In one sentence: **everything that touches a single order is O(1); only creating
             { key: "why", label: "Why it helps", align: "left", mono: false },
           ],
           rows: LEETCODE.map((l) => ({ p: `[LC ${l.n} · ${l.t}](https://leetcode.com/problems/${l.slug}/)`, lvl: l.lvl, why: l.why })),
-        }));
+        })] }));
     },
 
     quiz: [

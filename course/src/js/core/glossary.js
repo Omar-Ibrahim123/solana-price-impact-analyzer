@@ -482,7 +482,7 @@
     tick: {
       term: "Tick", aliases: ["ticks"], chapter: 7,
       def: "The smallest price step a market allows, and the whole-number unit prices are stored in. If one tick is $0.001, the price $104.350 is stored as the integer 104,350.",
-      project: "Phoenix SOL/USDC: 1 tick = $0.001. Kraken and Coinbase snapshots use 1 tick = $0.000001.",
+      project: "Phoenix SOL/USDC: 1 tick = $0.001. Kraken and Coinbase snapshots use 1 tick = $0.000001. Careful: the project's code also calls each 5-minute collector visit a \"tick\"; this course calls that a snapshot round, so a tick here is only ever a price step.",
       related: ["tick-size", "lot", "integer"],
     },
     "tick-size": {
@@ -558,8 +558,8 @@
     },
     slot: {
       term: "Slot", aliases: ["slots"], chapter: 8,
-      def: "Solana's clock tick: a window of about 400 milliseconds in which one validator may add a block. Slot numbers only go up, so a slot number pins a snapshot to a moment.",
-      project: "Our Phoenix snapshot is from slot 458,302,883.",
+      def: "Solana's unit of time: a window of about 400 milliseconds in which one validator (the slot's leader) may add a block. Slot numbers only go up, so a slot number pins a snapshot to a moment.",
+      project: "The 04:31 Phoenix snapshot is from slot 458,302,883; the account bytes in the hex explorer are a later read, during the collector run, with its own slot number. Careful: in this course \"slot\" only ever means this; positions in Phoenix's arrays are called node numbers.",
       related: ["solana", "validator", "snapshot"],
     },
     transaction: {
@@ -634,7 +634,7 @@
     },
     decoding: {
       term: "Decoding", aliases: ["decode", "decoder", "parse", "parsing"], chapter: 8,
-      def: "Turning raw bytes back into meaningful values: reading 8 bytes at the right offset as a u64, for example, and knowing it means \"number of bid slots\".",
+      def: "Turning raw bytes back into meaningful values: reading 8 bytes at the right offset as a u64, for example, and knowing it means \"room for this many bids\".",
       project: "phoenix.py is a decoder: no Phoenix SDK, just struct.unpack at the right offsets.",
       related: ["byte", "offset", "little-endian"],
     },
@@ -684,19 +684,19 @@
     // ---------------------------------------------------------------- 9. trees in arrays
     "free-list": {
       term: "Free list", aliases: ["free lists"], chapter: 9,
-      def: "A linked list of empty slots that can be reused. When an order leaves the book its slot goes onto the free list, and the next new order takes that slot instead of growing the array, like a parking lot reusing spaces.",
-      project: "Phoenix's node allocator keeps a bump index (next never-used slot) and a free-list head; the decoder skips freed nodes.",
+      def: "A linked list of empty positions in an array that can be reused. When an order leaves the book its node goes onto the free list, and the next new order takes that node instead of growing the array, like a parking lot reusing spaces.",
+      project: "Phoenix's node allocator keeps a bump index (next never-used node) and a free-list head; the decoder skips freed nodes.",
       related: ["red-black-tree", "array", "linked-list", "index"],
     },
     "bump-index": {
       term: "Bump index", aliases: ["bump_index"], chapter: 9,
-      def: "The number of the next never-used slot in a fixed array. When no freed slot is waiting, a new item takes this slot and the bump index moves up by one. It never moves back down.",
+      def: "The number of the next never-used position in a fixed array. When no freed node is waiting, a new item takes this one and the bump index moves up by one. It never moves back down.",
       project: "Phoenix's tree header stores it as bump_index (a u32). The hex explorer and chapter 9 read its real value from the account bytes.",
       related: ["free-list", "array", "index"],
     },
     stack: {
       term: "Stack", aliases: ["LIFO", "last in, first out"], chapter: 9,
-      def: "A pile where the last thing put on is the first thing taken off (last in, first out), like a stack of plates. A free list works this way: the most recently freed slot is the first to be reused.",
+      def: "A pile where the last thing put on is the first thing taken off (last in, first out), like a stack of plates. A free list works this way: the most recently freed node is the first to be reused.",
       related: ["free-list", "linked-list"],
     },
     rotation: {
@@ -777,7 +777,7 @@
     kraken: {
       term: "Kraken", chapter: 1,
       def: "A large centralized crypto exchange based in the US. Its public API publishes the SOL/USD order book.",
-      project: "kraken snapshot: 400 levels per side, aggregated by price.",
+      project: "Kraken's API returns up to 500 price levels per side, aggregated by price; the course's teaching snapshot keeps 400 of them.",
       related: ["cex", "coinbase", "api"],
     },
     coinbase: {
@@ -911,8 +911,8 @@
     },
     collector: {
       term: "Collector", chapter: 12,
-      def: "The part of this project that wakes up every 5 minutes, fetches every venue at the same moment, and saves the results.",
-      project: "collector.py: aligned ticks, concurrent fetches, retries with backoff, resume after a crash.",
+      def: "The part of this project that wakes up every 5 minutes, fetches every venue at the same moment, and saves the results. Each visit is a **snapshot round**.",
+      project: "collector.py: rounds aligned to the clock, concurrent fetches, retries with backoff, resume after a crash. In the code a round is called a tick.",
       related: ["pipeline", "database", "fault-isolation"],
     },
     database: {
@@ -928,7 +928,7 @@
     },
     "fault-isolation": {
       term: "Fault isolation", aliases: ["failure isolation"], chapter: 12,
-      def: "Designing a system so one broken part can't take the others down. If Coinbase times out, Kraken and Phoenix are still recorded for that tick.",
+      def: "Designing a system so one broken part can't take the others down. If Coinbase times out, Kraken and Phoenix are still recorded for that round.",
       related: ["collector", "uptime", "exponential-backoff"],
     },
     sharding: {
@@ -965,7 +965,7 @@
     "db-transaction": {
       term: "Database transaction", aliases: ["atomic write"], chapter: 12,
       def: "A group of writes that a database applies all together or not at all, like a bank transfer that can never take money out of one account without putting it in the other. If the program crashes halfway, none of the group is saved.",
-      project: "The collector writes each 5-minute tick (books, quotes, errors) in one transaction, so the database never holds half a tick.",
+      project: "The collector writes each 5-minute snapshot round (books, quotes, errors) in one transaction, so the database never holds half a round.",
       related: ["database", "sqlite", "collector"],
     },
     "compute-budget": {

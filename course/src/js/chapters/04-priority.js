@@ -276,7 +276,8 @@
         h("div", { class: "step-stage" }, ui.Figure({ children: svg, alt: "Cards for each resting order at $104.00, front of the queue on the left. Cancelled and filled orders appear faded for one step before they leave." })),
         caption, quizBox,
         h("div", { class: "step-controls" }, reset, back, next, count, score)),
-      engineLine, fillsLine);
+      fillsLine,
+      ui.ForProgrammers({ title: "What the engine reports", children: engineLine }));
   }
 
   /* ------------------------------------------------------------------ the chapter */
@@ -347,14 +348,14 @@ Second, it is simple and cheap. A taker only ever touches the front of each queu
         intro: "Four sellers share one price, $104.00. Step through what happens: three orders arrive, Bob cancels, Dave arrives, a buyer takes 7 SOL, and Bob tries again. In **Guess first** mode you predict each key moment before you see it. Every state comes from the matching engine.",
         children: buildTry(ctx),
       }),
-      ui.Callout({
+      ui.ForProgrammers({ title: "Practice: three LeetCode problems", children: ui.Callout({
         kind: "tip", title: "Practice: three LeetCode problems",
         body: `If you'd like to code these ideas, these problems on LeetCode fit this chapter:
 
 - [LC 1700, Number of Students Unable to Eat Lunch](https://leetcode.com/problems/number-of-students-unable-to-eat-lunch/) (easy): a warm-up in simulating a queue.
 - [LC 2073, Time Needed to Buy Tickets](https://leetcode.com/problems/time-needed-to-buy-tickets/) (easy): a FIFO line where people take a little at a time, the same shape as partial fills.
 - [LC 1801, Number of Orders in the Backlog](https://leetcode.com/problems/number-of-orders-in-the-backlog/) (medium): an order book matching problem. Solve it with two heaps, then ask why heaps alone make cancels hard.`,
-      }));
+      }) }));
     },
 
     quiz: [
