@@ -295,15 +295,26 @@ def test_summary_and_markdown_on_a_fake_run(tmp_path):
         (v, s) for v in ("kraken", "phoenix") for s in (1_000.0, 5_000.0)
     }
     kraken = next(r for r in rows if r.venue == "kraken" and r.usd == 5_000)
-    assert kraken.n_windows == 4 and kraken.window_s == 600
+    assert kraken.side == "both" and kraken.n_windows == 4 and kraken.window_s == 600
     # Identical books every tick: full refill always wins, and nothing ever changed.
     assert kraken.twap_cheaper == 1.0 and kraken.saving.median > 0
     assert kraken.unchanged.median == 1.0 and kraken.abs_drift.median == 0.0
     assert kraken.fee_bps == pytest.approx(40.0)
     assert md.startswith("## Does splitting a big order help?")
-    assert "| kraken | $5K | 4 |" in md
+    assert "| kraken | $5K | buy | 4 |" in md and "| kraken | $5K | sell | 4 |" in md
     assert "hardly requote" in md  # the static book is called out
     assert "preliminary" in md  # 4 start times is not a lot
+
+
+def test_markdown_says_drift_dominates_when_the_price_moves_more_than_impact(tmp_path):
+    # $0.50 per tick on a $100 book (50 bps) dwarfs the 1-2 bps a $1K order moves it.
+    db = write_run(tmp_path / "c.sqlite", n_ticks=5, drift=0.5, venues=("kraken",))
+    with Store(db) as store:
+        md = twap_markdown(store, sizes=(1_000,), n_children=3)
+        (row,) = twap_summary(store, sizes=(1_000,), n_children=3)
+    assert "mostly luck" in md
+    assert row.abs_drift.median == pytest.approx(100.0, rel=0.01)  # $1 over 2 ticks
+    assert row.abs_drift_paid.median > row.impact_saving.median
 
 
 def test_markdown_on_a_run_too_short_says_so(tmp_path):
@@ -325,7 +336,7 @@ def test_twap_cli_prints_one_shot_vs_twap(tmp_path, capsys):
 def test_twap_cli_summary_and_short_run(tmp_path, capsys):
     db = write_run(tmp_path / "c.sqlite", n_ticks=4)
     main(["twap", "--db", str(db), "--summary", "--children", "2", "--sizes", "1000"])
-    assert "| kraken | $1K |" in capsys.readouterr().out
+    assert "| kraken | $1K | buy |" in capsys.readouterr().out
     with pytest.raises(SystemExit, match="consecutive ticks"):
         main(["twap", "--db", str(db), "--venue", "kraken", "--children", "12"])
 

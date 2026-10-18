@@ -41,8 +41,10 @@ The one-shot order has no drift (it trades at snapshot 0), so splitting can only
 help if the impact it saves is bigger than the drift it pays. Over an hour the
 price usually moves more than a $1M order moves a deep exchange book, so on
 deep books the drift term decides the answer, and it is a coin flip: drift is
-as likely to help a buyer as hurt one. That is why the summary pools buys and
-sells and looks at distributions over many start times, not one example.
+as likely to help a buyer as hurt one. That is why the summary looks at
+distributions over every start time in a run (rolling windows), not one
+example, and why its conclusions pool buys and sells: a trend that hurts every
+buy TWAP helps every sell TWAP, and says nothing about splitting itself.
 
 ``P0`` is the venue's own mid by default (``benchmark="own"``). With
 ``benchmark="ref"`` it is the tick's reference mid (mean of the Kraken and
@@ -682,17 +684,19 @@ class Dist:
 
 @dataclass(frozen=True, slots=True)
 class SummaryRow:
-    """TWAP vs one-shot for one venue and size, over every window (buys and sells pooled)."""
+    """TWAP vs one-shot for one venue, size and side, over every start time in a run."""
 
     venue: str
     usd: float
+    side: str  # "buy", "sell", or "both" (the two pooled)
     resilience: float
-    n_windows: int  # start times; each contributes one result per side
+    n_windows: int  # start times; with side="both" each contributes a buy and a sell
     gap_s: float  # time between two children
     window_s: float  # time from the first child to the last
     one_shot: Dist  # bps vs arrival
     twap: Dist  # bps vs arrival
-    abs_drift: Dist  # |price move first child -> last child|, bps
+    mid_change: Dist  # signed price move first child -> last child, bps (+ = price rose)
+    abs_drift: Dist  # the same move, size only
     abs_drift_paid: Dist  # |drift part of the TWAP's cost|: ~half the window move, on average
     saving: Dist  # one-shot minus TWAP: > 0 means splitting was cheaper
     impact_saving: Dist  # one-shot minus the TWAP's impact part (drift taken out)
@@ -703,29 +707,39 @@ class SummaryRow:
     unchanged: Dist | None  # book_unchanged_share between consecutive children
 
 
-def summarize(
+def run_windows(
     series: Series,
     usd: float,
+    side: str,
     n_children: int = 12,
     every: int = 1,
     resilience: float = 1.0,
-    sides: Sequence[str] = ("buy", "sell"),
     limit_bps: float = DEFAULT_LIMIT_BPS,
     benchmark: Benchmark = "ref",
+) -> list[TwapResult]:
+    """A TWAP from every possible start time (rolling, overlapping windows)."""
+    results = []
+    for window in series.windows(n_children, every):
+        try:
+            results.append(run_window(window, side, usd, resilience, limit_bps, benchmark))
+        except ValueError:
+            continue  # e.g. no reference price at that tick: skip it, don't guess
+    return results
+
+
+def summarize_results(
+    series: Series,
+    usd: float,
+    results: Sequence[TwapResult],
+    n_children: int,
+    every: int,
 ) -> SummaryRow | None:
-    """Run a TWAP from every possible start time and summarize. None if no window fits."""
-    results: list[TwapResult] = []
-    windows = series.windows(n_children, every)
-    for window in windows:
-        for side in sides:
-            try:
-                results.append(run_window(window, side, usd, resilience, limit_bps, benchmark))
-            except ValueError:
-                continue  # e.g. no reference price at that tick: skip, don't guess
+    """Distributions over ``results`` (one series, one size). None if nothing filled."""
     # A result where nothing filled has no cost to compare; it still counts in fill ratios.
     priced = [r for r in results if r.saving_bps is not None]
     if not priced:
         return None
+    sides = sorted({r.side for r in results})
 
     # Refill evidence: how much of a child-sized slice near the touch is still
     # there, unchanged, one child later.
@@ -738,42 +752,64 @@ def summarize(
             if share is not None:
                 unchanged.append(share)
 
-    def dist(values: list[float]) -> Dist:
-        d = Dist.of(values)
+    def dist(values: list[float | None]) -> Dist:
+        d = Dist.of([v for v in values if v is not None])
         if d is None:
             raise ValueError("no values to summarize")
         return d
 
-    def known(values: list[float | None]) -> list[float]:
-        return [v for v in values if v is not None]
+    def impact_saving(r: TwapResult) -> float | None:
+        one, impact = r.one_shot.cost_bps, r.impact_bps
+        return None if one is None or impact is None else one - impact
+
+    def drift_paid(r: TwapResult) -> float | None:
+        return None if r.drift_paid_bps is None else abs(r.drift_paid_bps)
 
     return SummaryRow(
         venue=series.venue,
         usd=usd,
-        resilience=resilience,
-        n_windows=len(windows),
+        side=sides[0] if len(sides) == 1 else "both",
+        resilience=priced[0].resilience,
+        n_windows=len({r.start_ts for r in results}),
         gap_s=every * series.interval_s,
         window_s=(n_children - 1) * every * series.interval_s,
-        one_shot=dist(known([r.one_shot.cost_bps for r in priced])),
-        twap=dist(known([r.shortfall_bps for r in priced])),
+        one_shot=dist([r.one_shot.cost_bps for r in priced]),
+        twap=dist([r.shortfall_bps for r in priced]),
+        mid_change=dist([cost_bps("buy", r.children[-1].price, r.arrival_price) for r in priced]),
         abs_drift=dist([abs(r.window_drift_bps) for r in priced]),
-        abs_drift_paid=dist(
-            [abs(r.drift_paid_bps) for r in priced if r.drift_paid_bps is not None]
-        ),
-        saving=dist(known([r.saving_bps for r in priced])),
-        impact_saving=dist(
-            [
-                r.one_shot.cost_bps - r.impact_bps
-                for r in priced
-                if r.one_shot.cost_bps is not None and r.impact_bps is not None
-            ]
-        ),
+        abs_drift_paid=dist([drift_paid(r) for r in priced]),
+        saving=dist([r.saving_bps for r in priced]),
+        impact_saving=dist([impact_saving(r) for r in priced]),
         twap_cheaper=sum((r.saving_bps or 0.0) > 0 for r in priced) / len(priced),
         one_shot_fill=dist([r.one_shot.fill_ratio for r in results]).median,
         twap_fill=dist([r.fill_ratio for r in results]).median,
         fee_bps=dist([r.fee_bps for r in priced]).median,
         unchanged=Dist.of(unchanged),
     )
+
+
+def summarize(
+    series: Series,
+    usd: float,
+    n_children: int = 12,
+    every: int = 1,
+    resilience: float = 1.0,
+    sides: Sequence[str] = ("buy", "sell"),
+    limit_bps: float = DEFAULT_LIMIT_BPS,
+    benchmark: Benchmark = "ref",
+) -> SummaryRow | None:
+    """Run a TWAP from every start time, for each of ``sides``, and summarize them together.
+
+    Pooling buys and sells cancels a trend: over a day where SOL rose, every
+    buy TWAP pays drift and every sell TWAP gains it, and neither says anything
+    about splitting itself.
+    """
+    results = [
+        r
+        for side in sides
+        for r in run_windows(series, usd, side, n_children, every, resilience, limit_bps, benchmark)
+    ]
+    return summarize_results(series, usd, results, n_children, every)
 
 
 def _venues(store: Store, run_id: int | None) -> list[str]:
@@ -791,15 +827,14 @@ def twap_summary(
     limit_bps: float = DEFAULT_LIMIT_BPS,
     benchmark: Benchmark = "ref",
     run_id: int | None = None,
+    sides: Sequence[str] = ("buy", "sell"),
 ) -> list[SummaryRow]:
-    """``summarize`` for every venue and size in the newest run (rows with no window omitted)."""
+    """``summarize`` (sides pooled) for every venue and size; rows with no window are omitted."""
     rows = []
     for venue in venues or _venues(store, run_id):
         series = load_series(store, venue, run_id, band=limit_bps / 10_000 + 0.01)
         for usd in sizes:
-            row = summarize(
-                series, usd, n_children, every, resilience, limit_bps=limit_bps, benchmark=benchmark
-            )
+            row = summarize(series, usd, n_children, every, resilience, sides, limit_bps, benchmark)
             if row is not None:
                 rows.append(row)
     return rows
@@ -828,13 +863,16 @@ def twap_markdown(
 ) -> str:
     """The report section "Does splitting a big order help?", generated from the data.
 
-    Runs every start time twice: full refill (resilience 1, the optimistic case)
-    and no refill (resilience 0, the pessimistic case). The truth for a real
-    order sits between the two columns.
+    Every start time runs twice: full refill (resilience 1, the optimistic case)
+    and no refill (resilience 0, the pessimistic case); the truth for a real
+    order sits between those two columns. The table has one row per side,
+    because a thin book can be very different on its bid and ask sides; the
+    findings pool the sides, so a trend over the run doesn't decide them.
     """
     venues = list(venues or _venues(store, run_id))
-    full: list[SummaryRow] = []  # resilience 1: the book refills completely
-    no_refill: dict[tuple[str, float], SummaryRow | None] = {}  # resilience 0
+    rows: list[tuple[SummaryRow, SummaryRow | None]] = []  # (full refill, no refill) per side
+    pooled: list[SummaryRow] = []  # full refill, both sides: what the findings use
+    pooled_none: dict[tuple[str, float], SummaryRow | None] = {}
     unfit: list[str] = []
     for venue in venues:
         series = load_series(store, venue, run_id, band=limit_bps / 10_000 + 0.01)
@@ -842,91 +880,109 @@ def twap_markdown(
             unfit.append(not_enough_ticks(series, n_children, every))
             continue
         for usd in sizes:
-            r1 = summarize(
-                series, usd, n_children, every, 1.0, limit_bps=limit_bps, benchmark=benchmark
-            )
-            if r1 is not None:
-                full.append(r1)
-                no_refill[(venue, usd)] = summarize(
-                    series, usd, n_children, every, 0.0, limit_bps=limit_bps, benchmark=benchmark
+            full_all: list[TwapResult] = []
+            none_all: list[TwapResult] = []
+            for side in ("buy", "sell"):
+                args = (series, usd, side, n_children, every)
+                full = run_windows(*args, 1.0, limit_bps, benchmark)
+                none = run_windows(*args, 0.0, limit_bps, benchmark)
+                full_all += full
+                none_all += none
+                row = summarize_results(series, usd, full, n_children, every)
+                if row is not None:
+                    rows.append((row, summarize_results(series, usd, none, n_children, every)))
+            both = summarize_results(series, usd, full_all, n_children, every)
+            if both is not None:
+                pooled.append(both)
+                pooled_none[(venue, usd)] = summarize_results(
+                    series, usd, none_all, n_children, every
                 )
 
     lines = ["## Does splitting a big order help?", ""]
-    if not full:
+    if not rows:
         lines += ["Not enough data yet to answer this. " + " ".join(unfit), ""]
         return "\n".join(lines)
 
-    minutes, gap = full[0].window_s / 60, full[0].gap_s / 60
+    first = rows[0][0]
+    minutes, gap = first.window_s / 60, first.gap_s / 60
     bench = "the reference mid (Kraken/Coinbase)" if benchmark == "ref" else "the venue's own mid"
     lines += [
         f"A parent order is split into {n_children} equal IOC child orders, one every "
         f"{gap:g} minutes ({minutes:g} minutes from first to last), each executed against the "
         f"real snapshot of that moment, and compared with sending it all at once at the start. "
-        f"Costs are implementation shortfall in bps against {bench} at arrival, medians with "
-        f"the 10th to 90th percentile across every start time in the run; buys and sells are "
-        f"pooled so a trending price doesn't favour one answer. Fees are excluded from the "
-        f"cost columns and identical for both: splitting doesn't change the fee rate.",
+        f"Costs are implementation shortfall in bps against {bench} at arrival: medians, with "
+        f"the 10th to 90th percentile over every start time in the run (the windows overlap). "
+        f"Full refill assumes makers replace everything a child takes before the next one; no "
+        f"refill assumes nothing comes back. Fees are left out of the cost columns and are the "
+        f"same either way: splitting doesn't change the fee rate.",
         "",
-        "| Venue | Size | Start times | Filled (one-shot / TWAP) | One-shot cost | "
-        "TWAP, full refill | TWAP, no refill | Price move over window | TWAP cheaper (full refill) "
-        "| Book unchanged between children | Fee |",
-        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        "| Venue | Size | Side | Start times | Filled (one-shot / TWAP) | One-shot cost "
+        "| TWAP, full refill | TWAP, no refill | Mid change over window | TWAP cheaper "
+        "(full refill) | Book unchanged between children | Fee (bps) |",
+        "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
-    for r in full:
-        r0 = no_refill.get((r.venue, r.usd))
+    for r, r0 in rows:
         unchanged = r.unchanged.fmt(2) if r.unchanged else "n/a"
         lines.append(
-            f"| {r.venue} | {_usd(r.usd)} | {r.n_windows} | "
+            f"| {r.venue} | {_usd(r.usd)} | {r.side} | {r.n_windows} | "
             f"{_pct(r.one_shot_fill)} / {_pct(r.twap_fill)} | {r.one_shot.fmt()} | "
-            f"{r.twap.fmt()} | {r0.twap.fmt() if r0 else 'n/a'} | {r.abs_drift.fmt()} | "
+            f"{r.twap.fmt()} | {r0.twap.fmt() if r0 else 'n/a'} | {r.mid_change.fmt()} | "
             f"{_pct(r.twap_cheaper)} | {unchanged} | {r.fee_bps:g} |"
         )
     if unfit:
         lines += ["", "Left out: " + " ".join(unfit)]
-    lines += ["", " ".join(_findings(full, no_refill)), ""]
+    lines += ["", " ".join(_findings(pooled, pooled_none)), ""]
     return "\n".join(lines)
+
+
+def _each(rows: Sequence[SummaryRow], fmt: Callable[[SummaryRow], str]) -> str:
+    """'a, b and c': one formatted value per row; a single value if they are all equal."""
+    parts = [fmt(r) for r in rows]
+    if len(set(parts)) == 1:
+        return parts[0]
+    return ", ".join(parts[:-1]) + " and " + parts[-1]
 
 
 def _findings(full: list[SummaryRow], no_refill: dict) -> list[str]:
     """2-4 sentences, generated from the numbers, that say what the table means.
 
-    Only the largest size is discussed: that's where impact is big enough for
-    splitting to have a chance.
+    ``full`` holds the pooled (buy + sell) full-refill rows. Only the largest
+    size is discussed: that's where impact is big enough for splitting to have
+    a chance. Pairwise numbers (TWAP minus one-shot on the same start time) are
+    used rather than comparing two medians, because they stay meaningful when a
+    venue's buy and sell sides are wildly different.
     """
     out = []
     biggest = max(r.usd for r in full)
     top = [r for r in full if r.usd == biggest]
+    # Costs only compare like for like when both orders got (nearly) everything.
+    filled = [r for r in top if r.one_shot_fill >= 0.99 and r.twap_fill >= 0.99]
+    minutes = f"{top[0].window_s / 60:g} minutes"
 
     # 1. Where the drift a TWAP pays is bigger than the impact it saves, splitting is a bet.
     #    (A TWAP pays, on average, about half the start-to-end move: its children are
     #    spread over the window, not all at the end.)
-    def each(rows: list[SummaryRow], fmt) -> str:
-        """'a, b and c' with one formatted value per venue, in the venues' order."""
-        parts = [fmt(r) for r in rows]
-        return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
-
-    drift_bound = [r for r in top if r.abs_drift_paid.median > r.impact_saving.median]
+    drift_bound = [r for r in filled if r.abs_drift_paid.median > r.impact_saving.median]
     if drift_bound:
         out.append(
-            f"On {each(drift_bound, lambda r: r.venue)}, the drift a TWAP pays over "
-            f"{top[0].window_s / 60:g} minutes (typically "
-            f"{each(drift_bound, lambda r: f'{r.abs_drift_paid.median:.1f}')} bps, either way) "
-            f"is bigger than the impact that splitting {_usd(biggest)} saves even with full "
-            f"refill ({each(drift_bound, lambda r: f'{r.impact_saving.median:.1f}')} bps), so "
-            f"the outcome is mostly luck: TWAP was cheaper in "
-            f"{each(drift_bound, lambda r: _pct(r.twap_cheaper))} of the results."
+            f"On {_each(drift_bound, lambda r: r.venue)}, the drift a TWAP pays over {minutes} "
+            f"(typically {_each(drift_bound, lambda r: f'{r.abs_drift_paid.median:.1f}')} bps, "
+            f"either way) is bigger than the impact that splitting {_usd(biggest)} saves even "
+            f"with full refill ({_each(drift_bound, lambda r: f'{r.impact_saving.median:.1f}')} "
+            f"bps), so the outcome is mostly luck: TWAP was cheaper in "
+            f"{_each(drift_bound, lambda r: _pct(r.twap_cheaper))} of the results."
         )
 
     # 2. Where the impact saved beats the drift paid, splitting can genuinely help.
-    impact_bound = [r for r in top if r not in drift_bound]
+    impact_bound = [r for r in filled if r not in drift_bound]
     if impact_bound:
         out.append(
-            f"On {each(impact_bound, lambda r: r.venue)}, the impact saved at {_usd(biggest)} "
-            f"({each(impact_bound, lambda r: f'{r.impact_saving.median:.1f}')} bps) is bigger "
+            f"On {_each(impact_bound, lambda r: r.venue)}, the impact saved at {_usd(biggest)} "
+            f"({_each(impact_bound, lambda r: f'{r.impact_saving.median:.1f}')} bps) is bigger "
             f"than the typical drift paid "
-            f"({each(impact_bound, lambda r: f'{r.abs_drift_paid.median:.1f}')} bps), and with "
+            f"({_each(impact_bound, lambda r: f'{r.abs_drift_paid.median:.1f}')} bps), and with "
             f"full refill TWAP was cheaper in "
-            f"{each(impact_bound, lambda r: _pct(r.twap_cheaper))} of the results: splitting "
+            f"{_each(impact_bound, lambda r: _pct(r.twap_cheaper))} of the results: splitting "
             f"helps there, but only if the book really refills."
         )
 
@@ -936,17 +992,24 @@ def _findings(full: list[SummaryRow], no_refill: dict) -> list[str]:
     if static:
         r = max(static, key=lambda r: r.unchanged.median if r.unchanged else 0.0)
         r0 = no_refill.get((r.venue, r.usd))
-        tail = (
-            f"; with no refill TWAP costs {r0.twap.median:.1f} bps against "
-            f"{r.one_shot.median:.1f} bps for one order"
-            if r0 is not None
+        moved = (
+            f" even though the price moved a median {r.abs_drift.median:.1f} bps per window"
+            if r.abs_drift.median >= 1.0
             else ""
         )
-        out.append(
+        sentence = (
             f"{r.venue}'s book near the touch was unchanged from one child to the next for a "
-            f"median {r.unchanged.median:.0%} of the depth a child takes: its makers hardly "
-            f"requote, so there is little reason to expect it to refill{tail}."
+            f"median {r.unchanged.median:.0%} of the depth a child takes{moved}: its makers "
+            f"hardly requote, so there is little reason to expect it to refill"
         )
+        if r0 is not None:
+            sentence += f" (without refill, TWAP saved a median {r0.saving.median:.1f} bps)"
+        if r not in filled:
+            sentence += (
+                f", and inside the price limit it fills only {_pct(r.one_shot_fill)} of "
+                f"{_usd(biggest)} in one order ({_pct(r.twap_fill)} as a TWAP with full refill)"
+            )
+        out.append(sentence + ".")
     elif active:
         worst = max(r.unchanged.median for r in active if r.unchanged)
         share = "none" if worst < 0.005 else f"at most {worst:.0%}"
@@ -958,7 +1021,8 @@ def _findings(full: list[SummaryRow], no_refill: dict) -> list[str]:
     # 4. Honesty about sample size.
     n = min(r.n_windows for r in full)
     if n < 30:
-        out.append(f"Only {n} start times so far, and they overlap: treat this as preliminary.")
+        times = "start time" if n == 1 else "start times"
+        out.append(f"Only {n} {times} so far, so treat this as preliminary.")
     return out[:4]
 
 
