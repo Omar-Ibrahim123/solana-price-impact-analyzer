@@ -76,11 +76,15 @@
         h("p", null, h("strong", { text: "What it does. " }), ui.rich(s.what)),
         h("p", null, h("strong", { text: "The decision behind it. " }), ui.rich(s.why)));
     }
-    function select(id) { cur = id; OBZ.store.set("ch12.stage", id); paint(); }
+    function select(id) {
+      cur = id; OBZ.store.set("ch12.stage", id); paint();
+      const r = detail.getBoundingClientRect();
+      if (r.top > window.innerHeight - 80) detail.scrollIntoView({ block: "nearest" }); // phones: bring the answer into view
+    }
     paint();
     return h("div", { class: "stack" },
       h("p", { class: "fine" }, h("strong", { text: "In: " }), "Solana RPC (Phoenix account, slot) · Kraken REST · Coinbase REST · Jupiter quote API"),
-      h("div", { attrs: { role: "group", "aria-label": "Pipeline stages, in order" }, style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 150px), 1fr))", gap: "var(--s-2)" } }, btns),
+      h("div", { attrs: { role: "group", "aria-label": "Pipeline stages, in order" }, style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 125px), 1fr))", gap: "var(--s-2)" } }, btns),
       h("p", { class: "fine" }, h("strong", { text: "Out: " }), "REPORT.md and charts · the export this course loads"),
       detail);
   }
@@ -349,7 +353,7 @@ The collector's rules:
 - **Fetch every venue at the same moment**, one thread each, so no book is seconds older than another.
 - **Isolate failures.** If Kraken times out, the tick still stores Phoenix and Coinbase, plus a Kraken row that says "failed after 4 attempts" and why. That is [[fault-isolation|fault isolation]].
 - **Retry politely**: wait 1, 2, then 4 seconds with a little randomness ([[exponential-backoff|exponential backoff]]), and if a server says "Retry-After: 2", wait exactly that long.
-- **Write each tick in one [[database]] transaction**, so a crash leaves the whole tick or none of it.
+- **Write each tick in one [[db-transaction|database transaction]]**, so a crash leaves the whole tick or none of it.
 - **Resume after a restart**: \`collect --resume\` carries on with the same run and skips ticks already stored. Ctrl+C finishes the current tick first.
 - **Protect the run from its author.** The 24-hour run used its own copy of the code (a pinned git worktree), so edits made during the day couldn't change it halfway.`),
         ui.Callout({
@@ -363,7 +367,7 @@ The collector's rules:
 - **A [[sequencer]] decides the order.** Before matching, every order gets a place in one agreed sequence and is written to a log. Replaying the log rebuilds the book exactly: [[determinism]] doubles as crash recovery.
 - **[[latency|Latency]] budgets.** The collector thinks in seconds; a matching engine in microseconds. Nothing slow (disk, network, memory allocation) is allowed on the path an order takes.
 - **Compiled languages and fixed memory.** Our pure-Python engine handles about 758,000 events per second; Rust or C++ with preallocated arrays is far faster.
-- **On-chain limits.** Every [[validator]] re-runs every trade, so a Solana [[transaction]] gets a fixed compute budget. Phoenix keeps a whole market in one [[account]] (about 1.7 MB for SOL/USDC), and Solana only runs transactions side by side when they write different accounts, so every trade on one market waits its turn.`));
+- **On-chain limits.** Every [[validator]] re-runs every trade, so a Solana [[transaction]] gets a fixed [[compute-budget|compute budget]]. Phoenix keeps a whole market in one [[account]] (about 1.7 MB for SOL/USDC), and Solana only runs transactions side by side when they write different accounts, so every trade on one market waits its turn.`));
 
       // ---------------- See
       const see = ctx.section("see", "The pipeline, station by station");

@@ -801,6 +801,12 @@
       def: "The share of time a system works when you need it. If 287 of 288 fetches in a day succeed, that venue's uptime is 99.7%.",
       related: ["fault-isolation", "collector"],
     },
+    "half-round-trip": {
+      term: "Half round trip", aliases: ["round trip", "round-trip cost", "half round-trip cost"], chapter: 11,
+      def: "Buy an amount and sell the same amount straight back, then take half the gap between the two average prices, as a share of the price. It is the cost of one trip, and it barely changes if the price drifts while you measure, because the drift raises one side's cost and lowers the other's by the same amount.",
+      project: "metrics.py computes it for every book and every Jupiter route, against the reference mid.",
+      related: ["reference-mid", "price-impact", "spread"],
+    },
 
     // ---------------------------------------------------------------- 12. system design
     pipeline: {
@@ -861,12 +867,28 @@
       def: "When the outcome depends on which of two things happens first, like a cancel arriving a split second after the order was filled. Good systems handle both orders of events safely.",
       related: ["idempotent", "cancel"],
     },
+    "db-transaction": {
+      term: "Database transaction", aliases: ["atomic write"], chapter: 12,
+      def: "A group of writes that a database applies all together or not at all, like a bank transfer that can never take money out of one account without putting it in the other. If the program crashes halfway, none of the group is saved.",
+      project: "The collector writes each 5-minute tick (books, quotes, errors) in one transaction, so the database never holds half a tick.",
+      related: ["database", "sqlite", "collector"],
+    },
+    "compute-budget": {
+      term: "Compute budget", aliases: ["compute units", "compute limit"], chapter: 12,
+      def: "The most work a Solana transaction may do, counted in compute units. Every validator re-runs every transaction, so each one gets a fixed allowance (at most 1.4 million units) and is stopped if it goes over.",
+      related: ["transaction", "validator", "program"],
+    },
 
     // ---------------------------------------------------------------- 13. interview
     "spaced-repetition": {
       term: "Spaced repetition", chapter: 13,
       def: "A study method: review each flashcard just before you would forget it. Cards you know come back later and later; cards you miss come back soon.",
       related: [],
+    },
+    star: {
+      term: "STAR", aliases: ["STAR method"], chapter: 13,
+      def: "A shape for telling a project story in about a minute: **S**ituation (the problem), **T**ask (what you set out to do), **A**ction (what you did yourself), **R**esult (what happened, with a number).",
+      related: ["spaced-repetition"],
     },
   };
 

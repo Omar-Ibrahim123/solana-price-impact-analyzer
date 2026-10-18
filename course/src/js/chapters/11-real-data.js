@@ -248,7 +248,7 @@
       wrap.appendChild(ui.Figure({
         label: "Figure 11.2",
         children: h("div", { class: "stack" }, h("div", { class: "btn-row" }, viewSeg, metricSeg), chartBox, note),
-        caption: "Median cost of a trade by size, across every tick. **Half round trip** = buy $X and sell $X back to back, then take half the gap between the two average prices: it is the cost of one trip, and it barely moves if the price drifts while the quotes are taken. **Buy cost vs reference mid** compares a buy's average price with the Kraken–Coinbase reference. A line that stops means no fill or no route at the next size. Fees are not included for the books; Jupiter's quotes include the pools' own fees.",
+        caption: "Median cost of a trade by size, across every tick. **[[half-round-trip|Half round trip]]** = buy $X and sell $X back to back, then take half the gap between the two average prices: it is the cost of one trip, and it barely moves if the price drifts while the quotes are taken. **Buy cost vs reference mid** compares a buy's average price with the Kraken–Coinbase reference. A line that stops means no fill or no route at the next size. Fees are not included for the books; Jupiter's quotes include the pools' own fees.",
         alt: "Median cost in basis points against trade size, both on log scales, for the selected routes. The exact values for every line are in the table under the chart.",
       }));
 
@@ -311,7 +311,7 @@
       } else if (r.junkN > 0) {
         story.appendChild(ui.p(`**Nonsense.** With no limit, the order used up the real liquidity and kept going into [[junk-quote|junk quotes]]: ${fmt.int(r.junkN)} order${r.junkN === 1 ? "" : "s"} priced ${state.side === "buy" ? "above double" : "below half"} the market took ${fmt.usd(r.junkUsd, 0)}. The "average price" of $${r.avg >= 1e4 ? fmt.int(r.avg) : fmt.price(r.avg, 2)} and the ${fmt.int(r.impactOwn)} bps impact describe those junk orders, not the market.`));
       } else if (state.anchor === "own" && r.center && Math.abs(r.center - ref) / ref > 0.02 && (state.side === "sell" ? r.worst < ref * (1 - BAND) : r.worst > ref * (1 + BAND))) {
-        story.appendChild(ui.p(`**Protected around the wrong price.** The band is centred on Phoenix's own mid ($${fmt.price(r.own, 2)}), not on the market ($${fmt.price(ref, 2)}). So this "protected" ${sideWord} traded at $${fmt.price(r.worst, 2)}, **${fmt.num(Math.abs(r.worst - ref) / ref * 100, 1)}%** away from the market. Switch protection to the reference mid.`));
+        story.appendChild(ui.p(`**Protected around the wrong price.** The band is centred on Phoenix's own mid ($${fmt.price(r.own, 2)}), not on the market ($${fmt.price(ref, 2)}). So this "protected" ${sideWord} traded at $${fmt.price(r.worst, 2)}, **${fmt.num(Math.abs(r.worst - ref) / ref * 100, 1)}%** away from the market. Centre the band on the reference mid instead.`));
       } else if (!r.full) {
         story.appendChild(ui.p(`**A partial fill, reported as one.** Only ${fmt.usd(r.filledUsd, 0)} of ${fmt.usdCompact(state.usd)} could trade within 10% of $${fmt.price(r.center, 2)}. The simulator stops at the limit ($${fmt.price(r.limitPrice, 2)}) and says how much filled, instead of averaging junk into the price.`));
       } else {
@@ -332,9 +332,9 @@
           ui.Segmented({ label: "Side", value: state.side, onChange: (v) => { state.side = v; draw(); }, options: [{ value: "buy", label: "▲ Buy SOL" }, { value: "sell", label: "▼ Sell SOL" }] })),
         ui.Slider({ label: "Order size", min: 1000, max: 1e6, log: true, value: state.usd, format: fmt.usdCompact, onInput: OBZ.util.debounce((x) => { state.usd = x; draw(); }, 60) }),
         h("div", null,
-          h("p", { class: "fine", text: "Price protection (10% band)" }),
+          h("p", { class: "fine", text: "Price protection: a 10% band centred on…" }),
           ui.Segmented({ label: "Price protection", value: state.anchor, onChange: (v) => { state.anchor = v; draw(); }, options: [
-            { value: "off", label: "Off" }, { value: "own", label: "Around Phoenix's own mid" }, { value: "ref", label: "Around the reference mid" }] })));
+            { value: "off", label: "Off" }, { value: "own", label: "Phoenix's own mid" }, { value: "ref", label: "Reference mid" }] })));
       clear(checkBox);
       if (afterMid) {
         const answer = (ref - afterMid) / ref * 1e4;
@@ -422,7 +422,7 @@ One more rule: [[fee|fees]] are always shown separately, never mixed in. A begin
       tryEl.append(
         ui.TryIt({
           title: "Price protection on the real Phoenix book",
-          intro: "Start with protection **Off** and a **$1M buy**: watch the average price. Then switch to **Around Phoenix's own mid**. Now remove the best bid and try a **sell** with protection around the own mid, then around the reference mid. Which answer would you trust?",
+          intro: "Start with protection **Off** and a **$1M buy**: watch the average price. Then centre the band on **Phoenix's own mid**. Now remove the best bid and try a **sell** with the band on the own mid, then on the **reference mid**. Which answer would you trust?",
           children: buildTry(ctx),
         }),
         ui.Callout({
