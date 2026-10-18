@@ -16,6 +16,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "hypothesis>=6.100",  # property-based tests for the matching engine
     "pytest>=8",
     "ruff>=0.5",
 ]
@@ -34,6 +35,7 @@ markers = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+extend-exclude = [".claude"]  # agent worktrees live here; they lint themselves
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]

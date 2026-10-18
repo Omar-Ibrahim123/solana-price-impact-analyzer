@@ -20,3 +20,12 @@ def test_mix_and_invariants():
             assert e.order_id in added  # never cancels an id that was never placed
     assert 0.55 < counts[Add] / len(events) < 0.65
     assert 0.25 < counts[Cancel] / len(events) < 0.35
+
+
+def test_bench_markdown_runs_on_a_small_stream():
+    from benchmarks.bench_engine import OPS, markdown
+
+    table = markdown(5_000, seed=3)
+    assert "events/s" in table
+    for op in OPS:
+        assert f"| {op} |" in table  # every operation type occurs in 5,000 events

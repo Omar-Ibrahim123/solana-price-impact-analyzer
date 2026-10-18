@@ -22,6 +22,7 @@ from pathlib import Path
 
 from . import export, report
 from .amm import depth_within, equivalent_pool
+from .execution import add_twap_parser
 from .export import export_for_playground
 from .impact import (
     DEFAULT_MAX_SLIPPAGE,
@@ -183,11 +184,13 @@ def main(argv: list[str] | None = None) -> None:
         )
 
     add_collect_parsers(sub)
+    add_twap_parser(sub)
     report.add_parser(sub)
     export.add_parser(sub)
 
     args = parser.parse_args(argv)
-    if hasattr(args, "handler"):  # commands that register their own handler
+    # Commands that register a handler (set_defaults(handler=...)) dispatch themselves.
+    if getattr(args, "handler", None) is not None:
         return args.handler(args)
     if args.command in ("collect", "status"):
         return cmd_collect_or_status(args)
@@ -265,7 +268,7 @@ def cmd_collect_or_status(args: argparse.Namespace) -> None:
     if args.command == "status":
         if not Path(args.db).exists():
             sys.exit(f"{args.db} does not exist yet (start one with: collect)")
-        with Store(args.db) as store:
+        with Store(args.db, readonly=True) as store:
             print(format_status(store))
         return
 

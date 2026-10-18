@@ -12,8 +12,19 @@ Design
 All prices are integer ticks and all sizes are integer lots. Conversion to
 dollars and SOL happens outside the engine (see ``snapshot.py``).
 
+Time in force
+-------------
+Every limit order says what happens to the part that cannot trade at once:
+
+- ``TimeInForce.GTC`` (good-til-cancelled, the default): the remainder rests
+  in the book at its limit price and waits for a taker. This makes it a maker.
+- ``TimeInForce.IOC`` (immediate-or-cancel): trade what you can right now, at
+  the limit price or better, and cancel the rest. It never rests, so it can
+  only ever be a taker. ``market_order`` is an IOC whose limit is optional.
+
 Complexities (L = number of price levels on one side):
 - add_order that rests at an existing level: O(1); at a new level: O(log L)
+- add_order with IOC: only the matching cost below, never the resting step
 - cancel_order: O(1), plus O(log L) if it empties its level
 - matching m orders across k levels: O(m + k log L)
 """
@@ -33,6 +44,13 @@ class Side(Enum):
     @property
     def opposite(self) -> Side:
         return Side.ASK if self is Side.BID else Side.BID
+
+
+class TimeInForce(Enum):
+    """What happens to the unfilled part of a limit order."""
+
+    GTC = "gtc"  # good-til-cancelled: the remainder rests in the book (a maker order)
+    IOC = "ioc"  # immediate-or-cancel: the remainder is cancelled, nothing ever rests
 
 
 @dataclass(eq=False, slots=True)
@@ -143,15 +161,25 @@ class OrderBook:
 
     # ---- commands ----------------------------------------------------------
 
-    def add_order(self, order_id: int, side: Side, price_ticks: int, size_lots: int) -> list[Fill]:
+    def add_order(
+        self,
+        order_id: int,
+        side: Side,
+        price_ticks: int,
+        size_lots: int,
+        tif: TimeInForce = TimeInForce.GTC,
+    ) -> list[Fill]:
         """Submit a limit order. Returns the fills it caused (possibly empty).
 
         If the order crosses the spread (a bid at or above the best ask, or an
         ask at or below the best bid), it first matches like a taker against the
         opposite side, but only at prices at least as good as ``price_ticks``.
-        Any remaining size rests in the book at ``price_ticks``.
+        With ``tif=GTC`` any remaining size then rests in the book at
+        ``price_ticks``; with ``tif=IOC`` it is dropped, and the unfilled size is
+        ``size_lots - sum(f.size_lots for f in fills)``.
 
-        Raises ValueError for a non-positive size or an order_id already resting.
+        Raises ValueError for a non-positive size or an order_id already resting
+        (also for IOC: one id space for every order keeps fills unambiguous).
         """
         if size_lots <= 0:
             raise ValueError(f"size_lots must be positive, got {size_lots}")
@@ -160,7 +188,9 @@ class OrderBook:
 
         fills = self._match(side, size_lots, limit_price=price_ticks)
         remaining = size_lots - sum(f.size_lots for f in fills)
-        if remaining > 0:
+        # The only difference between GTC and IOC: whether the remainder rests.
+        # An IOC's id is never stored, so a later cancel of it is a harmless no-op.
+        if remaining > 0 and tif is TimeInForce.GTC:
             book = self._book(side)
             level = book.get(price_ticks)
             if level is None:
@@ -196,9 +226,10 @@ class OrderBook:
         out, the remainder is simply unfilled: compare the fills' total size
         with ``size_lots`` to detect it. Market orders never rest.
 
-        ``limit_price`` is optional price protection (immediate-or-cancel): the
-        order stops at the first level worse than it instead of sweeping the
-        whole side. Real takers almost always set one.
+        ``limit_price`` is optional price protection: the order stops at the
+        first level worse than it instead of sweeping the whole side. Real takers
+        almost always set one. With a limit this is exactly an IOC limit order
+        (``add_order(..., tif=TimeInForce.IOC)``), minus the order id.
         """
         if size_lots <= 0:
             raise ValueError(f"size_lots must be positive, got {size_lots}")
