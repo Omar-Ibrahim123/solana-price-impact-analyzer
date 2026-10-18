@@ -79,6 +79,9 @@ at the head of the queue. Prices and sizes are integers end to end, as on-chain 
 cancels and market orders through the engine and through a deliberately naive reference model, and
 requires identical fills after every step, plus invariants: never crossed, linked lists intact,
 lots conserved (`HYPOTHESIS_PROFILE=thorough pytest` for 5,000 sequences).
+`python -m benchmarks.mutation_check` plants 8 realistic bugs in a copy of the engine (a partial
+fill losing its queue place, an empty level left behind, an off-by-one limit, an IOC that rests...)
+and checks that the tests catch every one: 8/8.
 
 `python -m benchmarks.bench_engine --markdown` replays 1M random adds, cancels and market orders
 (seed 0) and times each call:
