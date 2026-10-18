@@ -26,6 +26,7 @@
   const { BID, ASK } = E;
 
   const PROTECTION = 0.10;
+  const START_PRICE = 104; // the random book starts near the course's real SOL price (about $104 on 18 Oct 2026)
   const SIZES = E.logSpacedSizes(1e3, 1e6, 8); // 25 sizes, like impact.py
   const PICK = [1e3, 1e4, 1e5, 1e6];
   const TAPE_ROWS = 40, TRACE_ROWS = 40, MAX_CHIPS = 24, HISTORY = 600;
@@ -50,7 +51,7 @@
       this.changed = new Set();      // "bid:12345" levels touched since the last render
       this.op = null;                // scratch filled by engine events during one command
       this.events = 0; this.trades = 0; this.nextId = 1;
-      this.fair = 150; this.anchor = 150; this.spreadUsd = 0.06; this.digits = 2;
+      this.fair = START_PRICE; this.anchor = START_PRICE; this.spreadUsd = 0.06; this.digits = 2;
       this.traceDirty = true;
       this.obs = (ev) => this.onEngine(ev);
     }
@@ -106,7 +107,7 @@
       this.ids = []; this.pos = new Map(); this.nextId = 1;
       this.book = new E.OrderBook({ units: new E.Units("0.01", "0.01"), observer: this.obs });
       this.source = { kind: "random", venue: null, label: "Simulated SOL/USD market (random traders)" };
-      this.fair = this.anchor = 150; this.spreadUsd = 0.06; this.digits = 2;
+      this.fair = this.anchor = START_PRICE; this.spreadUsd = 0.06; this.digits = 2;
       this.clearHistory();
       const keep = this.p.taker; this.p.taker = Math.min(keep, 0.05);
       for (let i = 0; i < 14000; i++) this.event(false);
@@ -114,7 +115,7 @@
       this.p.taker = keep;
       this.events = 0; this.trades = 0; this.tape.length = 0; this.dots.length = 0;
       this.trace.length = 0;
-      this.log("RESET", "add", "new random book: about 1,200 resting orders around $150", "warmed up with 14,000 random events through the same engine");
+      this.log("RESET", "add", `new random book: about 1,200 resting orders around $${START_PRICE}`, "warmed up with 14,000 random events through the same engine");
     }
     /** Load a venue of the active dataset. Returns an error message or null. */
     loadVenue(name) {
@@ -148,7 +149,7 @@
     event(verbose) {
       const b = this.book, u = b.units, tick = u.tickSize;
       this.events++;
-      const scale = this.anchor / 150;
+      const scale = this.anchor / START_PRICE;
       this.fair += gauss() * 0.004 * scale * this.p.vol + (this.anchor - this.fair) * 0.0004;
       const bookMid = b.mid();
       const mid = bookMid === null ? this.fair : bookMid;

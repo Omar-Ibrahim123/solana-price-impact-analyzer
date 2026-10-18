@@ -19,7 +19,7 @@
     return [
       { k: "S", word: "Situation", text: `**Situation.** On-chain exchanges compete on price impact: how much a big trade moves the price. I wanted a like-for-like measurement of what trading SOL costs on Phoenix compared with Kraken and Coinbase.` },
       { k: "T", word: "Task", text: `**Task.** Measure the cost of $1,000 to $1,000,000 trades on every venue with one engine and one method, so any difference comes from the books, not from my code.` },
-      { k: "A", word: "Action", text: `**Action.** I decoded Phoenix's market account byte by byte, built a price-time priority matching engine tested against a naive model with Hypothesis, and ran a collector every 5 minutes for 24 hours, with real Jupiter quotes for the AMM routes.` },
+      { k: "A", word: "Action", text: `**Action.** I decoded Phoenix's market account byte by byte, built a price-time priority matching engine tested against a naive model with Hypothesis, and built a collector designed to run for 24 hours, snapshotting every venue every 5 minutes, with real Jupiter quotes for the AMM routes.` },
       { k: "R", word: "Result", text: `**Result.** On ${F.snapshotWhen || "18 Oct 2026"} Phoenix's spread was ${F.phoenixSpread || "57.7 bps"} against ${F.cexSpread || "about 1 bps"} on the exchanges; Jupiter's prop-AMM routes were cheapest of all. Along the way I found junk quotes that made price protection necessary, and a decoder bug in bid ordering that only real bytes revealed.` },
     ];
   }
@@ -51,8 +51,8 @@
     {
       q: "**Situation.** Which opening sets the scene best?",
       options: [
-        { text: "I've always been really passionate about crypto and finance.", why: "It tells the interviewer about you, not about the problem, and it can't be checked. Open with the question the project answers." },
-        { text: "On-chain exchanges compete on price impact, and I wanted a like-for-like measurement of what a SOL trade costs on Phoenix compared with Kraken and Coinbase.", why: "Right. One sentence, a concrete question, and the venues named. The listener knows what you were trying to find out." },
+        { text: "I've always been really passionate about crypto, finance and building things.", why: "It tells the interviewer about you, not about the problem, and it can't be checked. Open with the question the project answers." },
+        { text: "I wanted a like-for-like measure of what a SOL trade costs on Phoenix versus Kraken and Coinbase.", why: "Right. One sentence, a concrete question, and the venues named. The listener knows what you were trying to find out." },
         { text: "Phoenix stores its book as red-black trees in a fixed array of 64-byte nodes inside one Solana account.", why: "True and interesting, but it's an Action detail. Starting with it loses a listener who doesn't yet know why it matters." },
       ],
       answer: 1,
@@ -60,8 +60,8 @@
     {
       q: "**Task.** Which sentence states your goal most clearly?",
       options: [
-        { text: "Measure $1K–$1M trades on every venue with one engine and one method, so differences come from the books, not my code.", why: "Right. It says what you measured, the range, and the design principle that makes the comparison fair." },
-        { text: "Build something cool with Solana.", why: "Too vague: an interviewer can't tell what success looked like. Name the measurement." },
+        { text: "Measure $1K–$1M trades on every venue with one engine, so differences come from the books.", why: "Right. It says what you measured, the range, and the design principle that makes the comparison fair." },
+        { text: "Build something cool with Solana and learn a lot along the way.", why: "Too vague: an interviewer can't tell what success looked like. Name the measurement." },
         { text: "Write a collector, a store, metrics, time series, a report, an export and a course.", why: "That's a list of outputs, not a goal. Keep the Task to what you set out to learn; the parts belong in Action." },
       ],
       answer: 0,
@@ -69,18 +69,18 @@
     {
       q: "**Action.** Which sentence describes what *you* did best?",
       options: [
-        { text: "We used various data structures and testing approaches.", why: "\"We\" and \"various\" hide your contribution. Say I, and name the specific choices." },
-        { text: "I decoded Phoenix's account, built a price-time priority engine tested against a naive model with Hypothesis, and ran a 5-minute collector for 24 hours.", why: "Right. Three concrete actions, each one a door the interviewer can open with a follow-up question." },
-        { text: "I spent a lot of late nights debugging.", why: "Effort isn't an action. Say what you built or decided; save the debugging story for \"what was the hardest bug?\"." },
+        { text: "We used various data structures and testing approaches throughout.", why: "\"We\" and \"various\" hide your contribution. Say I, and name the specific choices." },
+        { text: "I decoded Phoenix's account, built an engine tested against a naive model, and built a 5-minute collector.", why: "Right. Three concrete actions, each one a door the interviewer can open with a follow-up question." },
+        { text: "I spent a lot of late nights debugging the whole thing.", why: "Effort isn't an action. Say what you built or decided; save the debugging story for \"what was the hardest bug?\"." },
       ],
       answer: 1,
     },
     {
       q: "**Result.** Which result is strongest?",
       options: [
-        { text: "It worked really well and I learned a lot.", why: "No number, nothing checkable. A result should be something the interviewer could verify." },
-        { text: "Phoenix is a bad exchange.", why: "It overgeneralises from one market on one day, and it's an odd thing to tell the people who build it. State what you measured, with its date and limits." },
-        { text: "On 18 Oct, Phoenix's SOL/USDC spread was 57.7 bps against about 1 bps on Kraken, and Jupiter's prop-AMM routes were cheapest; I'd want weeks of data before generalising.", why: "Right. Specific numbers, a date, and the honest limit in one breath. That's what makes an interviewer trust the rest." },
+        { text: "It worked really well and I learned a lot about trading.", why: "No number, nothing checkable. A result should be something the interviewer could verify." },
+        { text: "Phoenix is a bad exchange compared with Kraken and Coinbase.", why: "It overgeneralises from one market on one day, and it's an odd thing to tell the people who build it. State what you measured, with its date and limits." },
+        { text: "On 18 Oct Phoenix's spread was 57.7 bps against about 1 bps on Kraken; I'd want weeks of data before generalising.", why: "Right. Specific numbers, a date, and the honest limit in one breath. That's what makes an interviewer trust the rest." },
       ],
       answer: 2,
     },
@@ -112,7 +112,7 @@
     id: "interview-mode",
     number: 13,
     title: "Interview mode",
-    summary: "How to turn everything in this course into answers: the project as a one-minute story, technical answers that carry their own evidence, and the habit of naming limits first.",
+    summary: "How the student who built this project (or anyone with a project like it) can turn it into interview answers: a one-minute story, technical answers that carry their own evidence, and the habit of naming limits first.",
     goals: [
       "Tell the project as a STAR story in about a minute",
       "Answer a technical question with a claim, a reason and evidence from the project",
@@ -130,9 +130,9 @@
         ui.prose(`
 An interviewer hears dozens of project descriptions. The ones they remember are short stories with a clear question, something the speaker actually did, and one number that sticks. A list of technologies is forgettable; "one missing bid moved the spread from 57.7 to about 1,584 bps" is not.
 
-A reliable shape is **[[star|STAR]]**:**S**ituation (the problem), **T**ask (what you set out to do), **A**ction (what *you* did, with "I", not "we"), **R**esult (what happened, with a number). Think of it as a film trailer: enough to make them want to ask about the scenes. Every concrete noun in your Action is a door the interviewer can open, so only put in doors you're happy to walk through. The model answers on the [interview page](#/interview) all follow this shape.`),
+A reliable shape is **[[star|STAR]]**: **S**ituation (the problem), **T**ask (what you set out to do), **A**ction (what *you* did, with "I", not "we"), **R**esult (what happened, with a number). Think of it as a film trailer: enough to make them want to ask about the scenes. Every concrete noun in your Action is a door the interviewer can open, so only put in doors you're happy to walk through. The model answers on the [interview page](#/interview) all follow this shape.`),
         ui.prose(`
-For technical questions, use **claim → reason → evidence**. The claim answers the question in one sentence. The reason says why. The evidence comes from your own project, which is what makes it yours:
+For technical questions, use **claim → reason → evidence**. The claim answers the question in one sentence. The reason says why. The evidence comes from the project itself, which is what makes the answer the speaker's own:
 
 - *Claim:* "Cancel is O(1)."
 - *Reason:* "A [[hash-map|hash map]] from order id to its node finds the order, and the [[doubly-linked-list|doubly linked list]] unlinks it without a scan."
@@ -141,14 +141,14 @@ For technical questions, use **claim → reason → evidence**. The claim answer
 The same pattern works for [[price-impact|price impact]] ("…and on 18 Oct Phoenix's $1K buy cost ${F.phoenix1kBuy || "28.8 bps"}, almost all half the spread"), for [[determinism]], for [[sqlite|SQLite]] versus Parquet.`),
         ui.Callout({
           kind: "tip", title: "Three honesty habits",
-          body: `- **Say the limits before they ask.** Quotes aren't trades; one day of data; base-tier fees; Phoenix Legacy spot, not perpetuals. Saying it first shows you understand your own result.
+          body: `- **Say the limits before they ask.** Quotes aren't trades; at most a day of data; base-tier fees; Phoenix Legacy spot, not Phoenix Perpetuals. Saying it first shows you understand your own result.
 - **Date your numbers.** "On 18 Oct at 04:31 UTC" is stronger than "Phoenix's spread is", because books change by the minute.
 - **"I don't know, but here's how I'd find out."** Then reason out loud from what you do know. Interviewers are testing how you think, not whether you've memorised Phoenix's codebase.`,
         }),
         ui.prose(`
-"What would you do differently?" is not a trap. Pick one or two specific changes and say why: start collecting on day one, anchor on a [[reference-mid|reference mid]] from the start, handle the tick that overran before the 24-hour run began. A specific regret shows judgement; "nothing" shows the opposite.
+"What would you do differently?" is not a trap. Pick one or two specific changes and say why: start collecting on day one, anchor on a [[reference-mid|reference mid]] from the start, handle the collector round that overran before the long run began. A specific regret shows judgement; "nothing" shows the opposite.
 
-Finally, connect to who you're talking to. [[ellipsis-labs|Ellipsis Labs]] builds [[phoenix|Phoenix]] and [[solfi|SolFi]]. Your project decoded one and measured the other's routes; that is a natural bridge to "and that's why I'd like to work on it".`));
+Finally, connect to who you're talking to. [[ellipsis-labs|Ellipsis Labs]] builds [[phoenix|Phoenix]] and [[solfi|SolFi]]. This project decoded one and measured the other's routes; that is a natural bridge to "and that's why I'd like to work on it".`));
 
       // ---------------- See
       const see = ctx.section("see", "The project in four beats");
@@ -156,7 +156,7 @@ Finally, connect to who you're talking to. [[ellipsis-labs|Ellipsis Labs]] build
         label: "Figure 13.1",
         children: buildStar(ctx),
         caption: "Step through the project's STAR story. Said at a calm pace (about 150 words a minute), the four beats take about a minute.",
-        alt: "Four boxes, S, T, A and R. Situation: on-chain exchanges compete on price impact; I wanted a like-for-like measurement of Phoenix against Kraken and Coinbase. Task: measure $1K to $1M trades with one engine and one method. Action: decoded Phoenix's account, built and property-tested a matching engine, ran a 24-hour collector with Jupiter quotes. Result: Phoenix's spread was 57.7 bps against about 1 bps on the exchanges; Jupiter's prop-AMM routes were cheapest; junk quotes and a decoder bug were found and fixed.",
+        alt: "Four boxes, S, T, A and R. Situation: on-chain exchanges compete on price impact; I wanted a like-for-like measurement of Phoenix against Kraken and Coinbase. Task: measure $1K to $1M trades with one engine and one method. Action: decoded Phoenix's account, built and property-tested a matching engine, built a collector designed to run for 24 hours, with Jupiter quotes. Result: Phoenix's spread was 57.7 bps against about 1 bps on the exchanges; Jupiter's prop-AMM routes were cheapest; junk quotes and a decoder bug were found and fixed.",
       }));
 
       // ---------------- Try
@@ -173,7 +173,7 @@ Finally, connect to who you're talking to. [[ellipsis-labs|Ellipsis Labs]] build
           children: buildDrill(ctx),
         }),
         ui.Callout({
-          kind: "project", title: "Your rehearsal space",
+          kind: "project", open: true, title: "Your rehearsal space",
           body: `The [interview page](#/interview) has ${(OBZ.interview && OBZ.interview.questions.length) || "40-plus"} questions with model answers in eight topics, a 60-second pitch builder with a timer, ${(OBZ.interview && OBZ.interview.cards.length) || "40"} flashcards covering every chapter, and the follow-ups a good interviewer will ask.`,
         }));
     },
@@ -182,28 +182,28 @@ Finally, connect to who you're talking to. [[ellipsis-labs|Ellipsis Labs]] build
       {
         q: "The interviewer asks: **\"What would you do differently?\"** Which answer is strongest?",
         options: [
-          { text: "Honestly, nothing. I'm happy with how it turned out.", why: "It sounds confident but signals you haven't reflected. Every project has a decision you'd revisit; naming one shows judgement." },
-          { text: "I'd anchor price protection on a reference mid from day one: I started with each venue's own mid, and when Phoenix's best bid vanished a 'protected' sell filled 14% below the market.", why: "Right. One specific change, the evidence that taught you, and what you did about it. It invites a good follow-up conversation." },
-          { text: "I'd rewrite everything in Rust, add a web UI, support every exchange and use machine learning.", why: "A wish list without reasons sounds like you're guessing. Pick one or two changes and explain why each matters." },
+          { text: "Honestly, nothing. I'm happy with how it all turned out in the end.", why: "It sounds confident but signals you haven't reflected. Every project has a decision you'd revisit; naming one shows judgement." },
+          { text: "I'd anchor price protection on a reference mid from day one: a 'protected' sell once filled 14% too low.", why: "Right. One specific change, the evidence that taught you, and what you did about it. It invites a good follow-up conversation." },
+          { text: "I'd rewrite everything in Rust, add a web UI and support every exchange.", why: "A wish list without reasons sounds like you're guessing. Pick one or two changes and explain why each matters." },
         ],
         answer: 1,
       },
       {
-        q: "You're asked how Phoenix's **perpetuals** engine handles liquidations, which your project never touched. What do you do?",
+        q: "You're asked how **Phoenix Perpetuals** handles liquidations, which your project never touched. What do you do?",
         options: [
           { text: "Make up a plausible answer so you don't look unprepared", why: "Interviewers at Ellipsis know the real answer. A confident wrong answer costs far more trust than an honest \"I don't know\"." },
-          { text: "Say your project measured Phoenix Legacy's spot market, then reason out loud about what a liquidation engine would need, and how you'd find out", why: "Right. State the boundary of what you know, then show how you think. That's what the question is really testing." },
-          { text: "Change the subject back to your matching engine", why: "Dodging is noticeable. Acknowledge the gap first; you can connect back to what you built afterwards." },
+          { text: "Say what the project did measure, then reason out loud about how you'd find out", why: "Right. State the boundary of what you know, then show how you think. That's what the question is really testing." },
+          { text: "Change the subject back to the matching engine you built", why: "Dodging is noticeable. Acknowledge the gap first; you can connect back to what you built afterwards." },
         ],
         answer: 1,
       },
       {
         q: "Which way of answering **\"Why is cancel O(1) in your engine?\"** follows claim → reason → evidence?",
         options: [
-          { text: "\"Because it uses good data structures, which makes it fast.\"", why: "There's a claim, but the reason is vague and there's no evidence. Name the structures and how they make it constant time." },
-          { text: "\"Cancel is O(1): an id-to-node hash map finds the order and the doubly linked list unlinks it; in my benchmark a cancel took about 600 ns.\"", why: "Right. One-sentence claim, the mechanism, then a number from your own project." },
+          { text: "\"Because it uses good data structures, which makes the whole engine fast.\"", why: "There's a claim, but the reason is vague and there's no evidence. Name the structures and how they make it constant time." },
+          { text: "\"O(1): a hash map finds the order, the linked list unlinks it; my benchmark: about 600 ns.\"", why: "Right. One-sentence claim, the mechanism, then a number from your own project." },
           { text: "\"Big-O notation describes how running time grows with input size, and O(1) means constant…\"", why: "That defines the notation instead of answering the question. Start with the claim about your engine, then explain why." },
-          { text: "\"I'm not sure, I think the library handles it.\"", why: "You built this engine; the reason is yours to give. The id map and linked list are exactly what make cancel O(1)." },
+          { text: "\"I'm not sure, I think the library handles that part for me.\"", why: "You built this engine; the reason is yours to give. The id map and linked list are exactly what make cancel O(1)." },
         ],
         answer: 1,
       },

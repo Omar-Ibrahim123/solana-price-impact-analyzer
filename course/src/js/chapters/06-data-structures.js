@@ -163,7 +163,7 @@
         steps: frames.map((f) => f.text), stage: svg, interval: 3200, label: "The three structures during add, cancel and match",
         render: (i) => drawFrame(svg, frames[i].frame, Object.assign({ cost: frames[i].cost }, frames[i].hl), frames[i].seen || [1, 2, 3]),
       }),
-      caption: "Every frame is drawn from the real engine: the page runs these operations on a JavaScript port of `orderbook.py` and records each event its observer hook reports (rest, cancel, fill, level removed). Prices use $0.01 ticks and sizes whole SOL to keep the picture small.",
+      caption: "Every frame is drawn from the real engine: the page runs these operations on a JavaScript port of `orderbook.py` and records each event the engine reports through a small callback, its observer hook (rest, cancel, fill, level removed). Prices use $0.01 ticks and sizes whole SOL to keep the picture small.",
       alt: "Starting book: $104.35 holds Alice 4 SOL then Bob 3 SOL; $104.40 holds Carol 5 SOL. Add Dave 2 SOL at $104.35: he joins the tail, O(1). Add Erin 6 SOL at $104.50: a new key is inserted in the sorted map, O(log L). Cancel Bob: the id map finds his node and Alice and Dave are linked to each other, O(1). Cancel Carol: her level empties and its key is deleted. Market buy 7 SOL: Alice fills 4 and Dave fills 2 (both removed), the empty $104.35 level is deleted, and Erin fills 1 SOL, keeping 5 at the head of $104.50.",
     });
   }
@@ -195,8 +195,8 @@
       events = [];
       let result;
       try { result = fn(); } catch (e) { clear(log).append(h("li", { text: "The engine refused: " + e.message })); return; }
-      clear(log);
-      log.append(h("li", null, h("strong", { text: label })));
+      // keep a short history: the newest operation at the bottom, older ones trimmed
+      log.append(h("li", { style: { marginTop: "var(--s-2)" } }, h("strong", { text: label })));
       let prev = before;
       for (const ev of events) {
         const d = describe(ev, prev);
@@ -205,7 +205,8 @@
         lastHl = Object.assign({ cost: d.cost }, d.hl);
       }
       if (after) { const extra = after(); if (extra) log.append(h("li", { text: extra })); }
-      if (!events.length) { log.append(h("li", { text: result === false ? "No order with that id is resting: cancel returned false (a cancel can lose the race to a fill). One hash-map miss, O(1)." : "Nothing happened." })); lastHl = { cost: result === false ? "O(1)" : "" }; }
+      if (!events.length) { log.append(h("li", { text: result === false ? "No order with that id is resting: cancel returned false and changed nothing (a cancel can lose the race to a fill). One hash-map miss, O(1)." : "Nothing happened." })); lastHl = { cost: result === false ? "O(1)" : "" }; }
+      while (log.children.length > 16) log.removeChild(log.firstChild);
       draw();
     }
     const priceSeg = ui.Segmented({ label: "Price", small: true, value: price, options: SANDBOX_PRICES.map((p) => ({ value: p, label: usd(p) })), onChange: (p) => { price = p; } });
@@ -561,7 +562,7 @@ The rules from chapters 3 and 4: best price first (\`book.prices[0]\` is the low
     { n: "981", t: "Time Based Key-Value Store", slug: "time-based-key-value-store", lvl: "Medium", why: "Binary search over sorted keys, like finding where a new price level goes." },
     { n: "1845", t: "Seat Reservation Manager", slug: "seat-reservation-manager", lvl: "Medium", why: "Always hand out the smallest free number: a heap or a sorted set. Chapter 9's free list solves a cousin of it." },
     { n: "450", t: "Delete Node in a BST", slug: "delete-node-in-a-bst", lvl: "Medium", why: "What a tree does when a price level empties, without the rebalancing." },
-    { n: "1801", t: "Number of Orders in the Backlog", slug: "number-of-orders-in-the-backlog", lvl: "Medium", why: "An order book matching problem. Solve it with two heaps, then explain why heaps can't cancel an order in O(1)." },
+    { n: "1801", t: "Number of Orders in the Backlog", slug: "number-of-orders-in-the-backlog", lvl: "Medium", why: "An order book matching problem. Solve it with two heaps, then explain why a heap can't cancel an order in O(1)." },
   ];
 
   /* ================================================================== the chapter */
@@ -574,7 +575,7 @@ The rules from chapters 3 and 4: best price first (\`book.prices[0]\` is the low
       "Say what Big-O means in plain words, with O(1), O(log n) and O(n) examples",
       "Name the engine's three structures and what each one is for",
       "Give the cost of add, cancel and match, with the reason for each",
-      "Write append, unlink, cancel and the matching loop yourself, and pass the tests",
+      "Optional, for programmers: write append, unlink, cancel and the matching loop yourself, and pass the tests",
     ],
     status: "ready",
     exercises: EXERCISES,
@@ -594,7 +595,7 @@ A [[matching-engine|matching engine]] must do four things, thousands of times a 
         ui.prose(`
 The engine in \`orderbook.py\` combines three [[data-structure|data structures]], each picked for one job:
 
-1. A [[sorted-map|sorted map]] from price to [[price-level|price level]], one per side. Think of a shelf kept in price order: the best price is always at one end, and a new price has to be slotted into place, which takes O(log L) for L levels.
+1. A [[sorted-map|sorted map]] from price to [[price-level|price level]], one per side. Think of a shelf kept in price order: the best price is always at one end, and a new price has to be slotted into place, which takes O(log L) for L levels. (That is O(log n) with n = L: here the thing being counted is price levels.)
 2. A [[doubly-linked-list|doubly linked list]] of orders inside each level: a queue at a ticket counter where everyone holds the shoulder of the person in front and the person behind. Newcomers join the tail, the head is served first ([[fifo|FIFO]]), and anyone can leave from the middle: their two neighbours just take hold of each other.
 3. A [[hash-map|hash map]] from [[order-id|order id]] to that order's [[node]]: a coat check. Hand in ticket 57 and you get coat 57 back without searching the racks. A cancel uses it to jump straight to the order.`),
         ui.Table({
@@ -607,28 +608,28 @@ The engine in \`orderbook.py\` combines three [[data-structure|data structures]]
           rows: [
             { op: "Add, level exists", steps: "look up the level, append to the tail, store the id", cost: "O(1)" },
             { op: "Add, new level", steps: "as above, plus insert a new price into the sorted map", cost: "O(log L)" },
-            { op: "Cancel", steps: "id map → node, unlink it (delete the level if it empties)", cost: "O(1) (+ O(log L))" },
+            { op: "Cancel", steps: "id map → node, unlink it (delete the level if it empties)", cost: "O(1), plus O(log L) if the level empties" },
             { op: "Best bid / ask", steps: "read the end of the sorted map", cost: "O(1)" },
             { op: "Match m orders over k levels", steps: "trade with heads; delete emptied levels", cost: "O(m + k log L)" },
           ],
         }),
         ui.prose(`
-In one sentence: **everything that touches a single order is O(1); only creating or deleting a whole price level costs O(log L).** Why not a plain list sorted by price and time? Cancelling would mean searching it, O(n). Why not a [[heap]]? It finds the best price fast but can't remove an order from the middle.`),
+In one sentence: **everything that touches a single order is O(1); only creating or deleting a whole price level costs O(log L).** Why not a plain list sorted by price and time? Cancelling would mean searching it, O(n). Why not a [[heap]] (a tree that always keeps the smallest or largest item on top)? It finds the best price fast, but a plain heap can't find an arbitrary entry without an extra index (with a position map it can delete one in O(log n)), and it can't look up a price level at all.`),
         ui.Callout({
-          kind: "project", title: "Measured, not just claimed",
-          body: `The project's benchmark replays one million random adds, cancels and market orders through \`orderbook.py\` and times each call ([[nanosecond|ns]] = a billionth of a second). The ranking matches the Big-O story: a cancel is the cheapest real operation; a new level costs about 600 ns more than joining one; market orders have the long tail because big ones sweep several levels. Throughput: **757,703 events per second**, in pure Python.`,
+          kind: "project", open: true, title: "Measured, not just claimed",
+          body: `The project's benchmark replays one million random adds, cancels and market orders through \`orderbook.py\` and times each call ([[nanosecond|ns]] = a billionth of a second). The ranking matches the Big-O story: a cancel is the cheapest real operation; a new level costs about 600 ns more than joining one; market orders have the long tail because big ones sweep several levels. In total it handles **757,703 events per second** (its [[throughput]]), in pure Python. "p99" is the time 99% of calls beat: the slow end, not the average.`,
           children: ui.Table({
             caption: "benchmarks/bench_engine.py, 1M events, Python 3.14 (from the README)",
             dense: true,
             columns: [
               { key: "op", label: "Operation", align: "left", mono: false },
               { key: "mean", label: "Mean (ns)" },
-              { key: "p99", label: "p99 (ns)" },
+              { key: "p99", label: "p99 (ns): 99% faster" },
               { key: "o", label: "Big-O" },
             ],
             rows: [
               { op: "cancel a resting order", mean: "592", p99: "1,000", o: "O(1)" },
-              { op: "cancel, already filled (no-op)", mean: "113", p99: "200", o: "O(1)" },
+              { op: "cancel, already filled (does nothing)", mean: "113", p99: "200", o: "O(1)" },
               { op: "add at an existing level", mean: "1,129", p99: "1,800", o: "O(1)" },
               { op: "add that creates a level", mean: "1,711", p99: "2,800", o: "O(log L)" },
               { op: "market order", mean: "4,040", p99: "10,100", o: "O(m + k log L)" },
@@ -648,10 +649,10 @@ In one sentence: **everything that touches a single order is O(1); only creating
           intro: "Add asks at any of four prices, cancel by id, or send a market buy. Each line below is an event the real engine reported. Try: cancel the middle order of a queue; cancel an id twice; buy more SOL than the book holds.",
           children: buildSandbox(ctx),
         }),
-        h("h3", { text: "Coding exercises" }),
+        ui.ForProgrammers({ title: "Coding exercises: build the engine yourself", children: [
         ui.p("Five small functions that together make a working engine. They are in JavaScript so they run right here, in a sandbox with a time limit; the ideas map one to one onto `orderbook.py`. Each has tests, three hints that get more specific, and a reference solution. Your code and progress are saved in this browser, and the [code lab](#/play/code) collects every exercise in the course."),
-        ...EXERCISES.map((x) => ui.CodeExercise(x)),
-        h("h3", { text: "Practice on LeetCode" }),
+        ...EXERCISES.map((x) => ui.CodeExercise(x))] }),
+        ui.ForProgrammers({ title: "Practice on LeetCode", children: [
         ui.p("The same ideas appear in classic interview problems. Start at the top."),
         ui.Table({
           caption: "Suggested problems, in order",
@@ -661,7 +662,7 @@ In one sentence: **everything that touches a single order is O(1); only creating
             { key: "why", label: "Why it helps", align: "left", mono: false },
           ],
           rows: LEETCODE.map((l) => ({ p: `[LC ${l.n} · ${l.t}](https://leetcode.com/problems/${l.slug}/)`, lvl: l.lvl, why: l.why })),
-        }));
+        })] }));
     },
 
     quiz: [
@@ -688,10 +689,10 @@ In one sentence: **everything that touches a single order is O(1); only creating
       {
         q: "In the benchmark, an add that creates a new price level took about 1,711 ns on average, and an add that joins an existing level about 1,129 ns. What best explains the difference?",
         options: [
-          { text: "Joining a level means walking its queue to reach the tail", why: "The level keeps a `tail` pointer, so appending never walks the queue. That's why joining a level is O(1)." },
-          { text: "A new level needs a new key inserted into the sorted map (O(log L)) and a new level object", why: "Both adds append the order and store its id; only the new-level case also creates a `PriceLevel` and inserts a price into the `SortedDict`. That extra work is the roughly 600 ns gap." },
-          { text: "Prices far from the mid are slower to store", why: "The engine never looks at the distance from the mid. A new level costs the same wherever it is." },
-          { text: "It's noise: both operations are O(1)", why: "Each figure is an average over hundreds of thousands of calls, so the gap is real. And adding a new level isn't O(1): it inserts into the sorted map." },
+          { text: "Joining a level means walking its whole queue to reach the back", why: "The level keeps a `tail` pointer, so appending never walks the queue. That's why joining a level is O(1)." },
+          { text: "A new level means inserting a new key into the sorted map", why: "Both adds append the order and store its id; only the new-level case also creates a `PriceLevel` and inserts a price into the sorted map (Python's `SortedDict`), an O(log L) step. That extra work is the roughly 600 ns gap." },
+          { text: "Prices far from the mid take the engine longer to store", why: "The engine never looks at the distance from the mid. A new level costs the same wherever it is." },
+          { text: "It's just noise: both operations are really O(1)", why: "Each figure is an average over hundreds of thousands of calls, so the gap is real. And adding a new level isn't O(1): it inserts into the sorted map." },
         ],
         answer: 1,
       },

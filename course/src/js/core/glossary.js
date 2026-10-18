@@ -453,7 +453,7 @@
     },
     heap: {
       term: "Heap", aliases: ["priority queue"], chapter: 6,
-      def: "A tree-shaped structure that always keeps the smallest (or largest) item on top, cheap to add to and to pop the top from. It can't quickly find or remove an item from the middle, which is why order books use sorted maps instead.",
+      def: "A tree-shaped structure that always keeps the smallest (or largest) item on top, cheap to add to and to pop the top from. A plain heap can't find an arbitrary item without an extra index (with a position map it can delete one in O(log n)), and it can't look up a price, which is why order books use sorted maps instead.",
       related: ["sorted-map", "tree"],
     },
     nanosecond: {
@@ -466,12 +466,12 @@
     // ---------------------------------------------------------------- 7. integers
     determinism: {
       term: "Determinism", aliases: ["deterministic"], chapter: 7,
-      def: "Same inputs, exactly the same outputs, every time and on every computer. A blockchain needs it because thousands of validators must all compute the identical result for every trade.",
+      def: "Same inputs, exactly the same outputs, every time and on every computer. A blockchain needs it because about a thousand validators must all compute the identical result for every trade: same program, same bytes, same order, same answer.",
       related: ["validator", "floating-point", "integer", "matching-engine"],
     },
     "floating-point": {
       term: "Floating point", aliases: ["float", "floats", "floating-point number"], chapter: 7,
-      def: "The usual way computers store decimals: fast, but approximate. In most languages 0.1 + 0.2 gives 0.30000000000000004. Tiny rounding differences can depend on the order of operations, which is dangerous when many computers must agree.",
+      def: "The usual way computers store decimals: fast, but approximate. 0.1 + 0.2 gives 0.30000000000000004, and it gives exactly that on every computer, because the standard (IEEE 754) fixes the result of each basic operation. The trouble is that it is inexact: money must add up to the last unit, and a computed price may not equal a typed one. Results differ between machines only when the order of operations isn't pinned down, for example with compiler shortcuts or sums split across threads.",
       related: ["integer", "determinism", "tick", "lot"],
     },
     integer: {
@@ -482,7 +482,7 @@
     tick: {
       term: "Tick", aliases: ["ticks"], chapter: 7,
       def: "The smallest price step a market allows, and the whole-number unit prices are stored in. If one tick is $0.001, the price $104.350 is stored as the integer 104,350.",
-      project: "Phoenix SOL/USDC: 1 tick = $0.001. Kraken and Coinbase snapshots use 1 tick = $0.000001.",
+      project: "Phoenix SOL/USDC: 1 tick = $0.001. Kraken and Coinbase snapshots use 1 tick = $0.000001. Careful: the project's code also calls each 5-minute collector visit a \"tick\"; this course calls that a snapshot round, so a tick here is only ever a price step.",
       related: ["tick-size", "lot", "integer"],
     },
     "tick-size": {
@@ -541,8 +541,8 @@
     },
     account: {
       term: "Account (Solana)", aliases: ["accounts", "account"], chapter: 8,
-      def: "Solana stores all data in accounts: fixed-size boxes of bytes, each with an address and an owner program that is allowed to change it. Anyone can read any account.",
-      project: "Phoenix keeps an entire market (header, bids, asks, trader seats) in one account: 1,723,488 bytes (about 1.7 MB) for SOL/USDC. We download its bytes and decode them ourselves.",
+      def: "Solana stores all data in accounts: boxes of bytes, each with an address and an owner program that is allowed to change it. Anyone can read any account. The owner program can grow an account, but only by up to 10 KiB per instruction (10 MiB at most), and a bigger account must hold more rent.",
+      project: "Phoenix keeps an entire market (header, bids, asks, trader seats) in one account, allocated at full size when the market is created: 1,723,488 bytes (about 1.7 MB) for SOL/USDC. We download its bytes and decode them ourselves.",
       related: ["program", "address", "byte", "phoenix"],
     },
     program: {
@@ -558,8 +558,8 @@
     },
     slot: {
       term: "Slot", aliases: ["slots"], chapter: 8,
-      def: "Solana's clock tick: a window of about 400 milliseconds in which one validator may add a block. Slot numbers only go up, so a slot number pins a snapshot to a moment.",
-      project: "Our Phoenix snapshot is from slot 458,302,883.",
+      def: "Solana's unit of time: a window of about 400 milliseconds in which one validator (the slot's leader) may add a block. Slot numbers only go up, so a slot number pins a snapshot to a moment.",
+      project: "The 04:31 Phoenix snapshot is from slot 458,302,883; the account bytes in the hex explorer are a later read, during the collector run, with its own slot number. Careful: in this course \"slot\" only ever means this; positions in Phoenix's arrays are called node numbers.",
       related: ["solana", "validator", "snapshot"],
     },
     transaction: {
@@ -607,18 +607,13 @@
     u64: {
       term: "u64", aliases: ["uint64"], chapter: 8,
       def: "An unsigned 64-bit integer: a whole number from 0 to about 18 quintillion, stored in 8 bytes. \"Unsigned\" means it can't be negative.",
-      related: ["u32", "i32", "integer", "little-endian"],
+      related: ["u32", "integer", "little-endian"],
     },
     u32: {
       term: "u32", aliases: ["uint32"], chapter: 8,
       def: "An unsigned 32-bit integer: a whole number from 0 to about 4.3 billion, stored in 4 bytes.",
-      related: ["u64", "i32"],
-    },
-    i32: {
-      term: "i32", aliases: ["int32"], chapter: 9,
-      def: "A signed 32-bit integer: 4 bytes holding a whole number between about −2.1 billion and +2.1 billion.",
-      project: "Phoenix's tree nodes use i32 array indices as pointers (0 means \"none\").",
-      related: ["u32", "pointer"],
+      project: "Phoenix's tree nodes link to each other with u32 node numbers (0 means \"none\"), and the tree header's bump_index and free_list_head are u32 too.",
+      related: ["u64", "pointer"],
     },
     offset: {
       term: "Offset", aliases: ["byte offset"], chapter: 8,
@@ -639,7 +634,7 @@
     },
     decoding: {
       term: "Decoding", aliases: ["decode", "decoder", "parse", "parsing"], chapter: 8,
-      def: "Turning raw bytes back into meaningful values: reading 8 bytes at the right offset as a u64, for example, and knowing it means \"number of bid slots\".",
+      def: "Turning raw bytes back into meaningful values: reading 8 bytes at the right offset as a u64, for example, and knowing it means \"room for this many bids\".",
       project: "phoenix.py is a decoder: no Phoenix SDK, just struct.unpack at the right offsets.",
       related: ["byte", "offset", "little-endian"],
     },
@@ -675,23 +670,33 @@
       def: "Flipping every bit of a number: each 0 becomes 1 and each 1 becomes 0. For a 64-bit number, NOT n = 18,446,744,073,709,551,615 − n, so small numbers become huge ones and their order is reversed.",
       related: ["bit", "u64", "sequence-number"],
     },
+    rent: {
+      term: "Rent", aliases: ["rent-exempt", "rent exemption"], chapter: 8,
+      def: "The SOL deposit an account must hold to stay on Solana, in proportion to its size. A bigger account locks up more SOL, which is one reason programs size their accounts carefully.",
+      related: ["account", "sol"],
+    },
+    "priority-fee": {
+      term: "Priority fee", aliases: ["priority fees", "leader", "slot leader"], chapter: 8,
+      def: "An optional extra fee a Solana transaction can offer so the slot's leader (the validator building that block) is more likely to include it early. The leader decides the order of transactions inside its block.",
+      related: ["transaction", "validator", "slot"],
+    },
 
     // ---------------------------------------------------------------- 9. trees in arrays
     "free-list": {
       term: "Free list", aliases: ["free lists"], chapter: 9,
-      def: "A linked list of empty slots that can be reused. When an order leaves the book its slot goes onto the free list, and the next new order takes that slot instead of growing the array, like a parking lot reusing spaces.",
-      project: "Phoenix's node allocator keeps a bump index (next never-used slot) and a free-list head; the decoder skips freed nodes.",
+      def: "A linked list of empty positions in an array that can be reused. When an order leaves the book its node goes onto the free list, and the next new order takes that node instead of growing the array, like a parking lot reusing spaces.",
+      project: "Phoenix's node allocator keeps a bump index (next never-used node) and a free-list head; the decoder skips freed nodes.",
       related: ["red-black-tree", "array", "linked-list", "index"],
     },
     "bump-index": {
       term: "Bump index", aliases: ["bump_index"], chapter: 9,
-      def: "The number of the next never-used slot in a fixed array. When no freed slot is waiting, a new item takes this slot and the bump index moves up by one. It never moves back down.",
-      project: "In Phoenix's SOL/USDC bids tree at slot 458,325,932 the bump index was 1,683: slots 1–1,682 had been used at least once, and 2,414 had never been touched.",
+      def: "The number of the next never-used position in a fixed array. When no freed node is waiting, a new item takes this one and the bump index moves up by one. It never moves back down.",
+      project: "Phoenix's tree header stores it as bump_index (a u32). The hex explorer and chapter 9 read its real value from the account bytes.",
       related: ["free-list", "array", "index"],
     },
     stack: {
       term: "Stack", aliases: ["LIFO", "last in, first out"], chapter: 9,
-      def: "A pile where the last thing put on is the first thing taken off (last in, first out), like a stack of plates. A free list works this way: the most recently freed slot is the first to be reused.",
+      def: "A pile where the last thing put on is the first thing taken off (last in, first out), like a stack of plates. A free list works this way: the most recently freed node is the first to be reused.",
       related: ["free-list", "linked-list"],
     },
     rotation: {
@@ -734,8 +739,8 @@
     },
     "prop-amm": {
       term: "Prop AMM", aliases: ["proprietary AMM", "prop AMMs"], chapter: 10,
-      def: "A proprietary AMM: a pool run by one professional market maker, whose program re-prices it from the firm's own model many times a second instead of following a fixed curve. Much of Solana's SOL/USDC volume now flows through prop AMMs.",
-      project: "A recorded $100K Jupiter quote routed entirely through prop AMMs (Kipseli, BisonFi, TesseraV).",
+      def: "A proprietary AMM: a pool run by one professional market maker, whose program re-prices it from the firm's own model frequently, often every slot, instead of following a fixed curve. Much of Solana's SOL/USDC volume now flows through prop AMMs.",
+      project: "In the collector's data most of Jupiter's best routes ran through venues Jupiter labels with its own names, mostly prop AMMs run by market makers. Chapter 10 lists the labels from the data.",
       related: ["amm", "solfi", "market-maker", "jupiter"],
     },
     solfi: {
@@ -772,23 +777,23 @@
     kraken: {
       term: "Kraken", chapter: 1,
       def: "A large centralized crypto exchange based in the US. Its public API publishes the SOL/USD order book.",
-      project: "kraken snapshot: 400 levels per side, aggregated by price.",
+      project: "Kraken's API returns up to 500 price levels per side, aggregated by price; the course's teaching snapshot keeps 400 of them.",
       related: ["cex", "coinbase", "api"],
     },
     coinbase: {
       term: "Coinbase", chapter: 1,
-      def: "The largest US centralized crypto exchange. Coinbase Advanced publishes its full SOL/USD order book through a public API.",
+      def: "The largest US centralized crypto exchange. Coinbase Advanced publishes its aggregated (level-2) SOL/USD order book, one total per price, through a public API.",
       related: ["cex", "kraken", "api"],
     },
     phoenix: {
       term: "Phoenix", chapter: 8,
-      def: "An order-book exchange that runs entirely on Solana, built by Ellipsis Labs. A market's whole book lives in one Solana account, and trades are matched and settled inside the same transaction.",
+      def: "An exchange with an order book that runs on the Solana blockchain instead of on a company's own computers. It is built by Ellipsis Labs. Chapter 8 shows how it keeps a whole market in one place.",
       project: "We read the SOL/USDC market account directly and decode its bytes with our own code.",
       related: ["ellipsis-labs", "crankless", "account", "dex", "red-black-tree"],
     },
     "ellipsis-labs": {
       term: "Ellipsis Labs", chapter: 13,
-      def: "The company that builds Phoenix (the on-chain order book and Phoenix perpetuals) and the SolFi prop AMM.",
+      def: "The company that builds Phoenix (the on-chain order book, and Phoenix Perpetuals) and the SolFi prop AMM.",
       related: ["phoenix", "solfi"],
     },
     crankless: {
@@ -798,7 +803,7 @@
     },
     "perpetual-futures": {
       term: "Perpetual futures", aliases: ["perps", "perpetuals"], chapter: 13,
-      def: "Contracts that let you bet on a price going up or down without owning the asset, and that never expire. Phoenix perpetuals is Ellipsis Labs' newer product.",
+      def: "Contracts that let you bet on a price going up or down without owning the asset, and that never expire. Ellipsis Labs runs Phoenix Perpetuals.",
       related: ["phoenix", "ellipsis-labs"],
     },
     "concentrated-liquidity": {
@@ -843,7 +848,7 @@
     },
     "time-series": {
       term: "Time series", chapter: 11,
-      def: "The same measurement taken again and again over time, like a daily temperature log. Here: spread and depth every 5 minutes for 24 hours.",
+      def: "The same measurement taken again and again over time, like a daily temperature log. Here: spread, depth and costs from the collector, which was built to run for 24 hours with a snapshot round every 5 minutes.",
       related: ["snapshot", "median", "percentile"],
     },
     median: {
@@ -893,7 +898,7 @@
     },
     "half-round-trip": {
       term: "Half round trip", aliases: ["round trip", "round-trip cost", "half round-trip cost"], chapter: 11,
-      def: "Buy an amount and sell the same amount straight back, then take half the gap between the two average prices, as a share of the price. It is the cost of one trip, and it barely changes if the price drifts while you measure, because the drift raises one side's cost and lowers the other's by the same amount.",
+      def: "Buy an amount and sell the same amount straight back, then take half the gap between the two average prices, as a share of the price. It is the cost of one trip. It barely depends on which reference price you measure against, or on slow drift while the quotes are taken, because a shift raises one side's cost and lowers the other's by about the same amount. A sudden move between the buy quote and the sell quote still shows up.",
       project: "metrics.py computes it for every book and every Jupiter route, against the reference mid.",
       related: ["reference-mid", "price-impact", "spread"],
     },
@@ -906,8 +911,8 @@
     },
     collector: {
       term: "Collector", chapter: 12,
-      def: "The part of this project that wakes up every 5 minutes, fetches every venue at the same moment, and saves the results.",
-      project: "collector.py: aligned ticks, concurrent fetches, retries with backoff, resume after a crash.",
+      def: "The part of this project that wakes up every 5 minutes, fetches every venue at the same moment, and saves the results. Each visit is a **snapshot round**.",
+      project: "collector.py: rounds aligned to the clock, concurrent fetches, retries with backoff, resume after a crash. In the code a round is called a tick.",
       related: ["pipeline", "database", "fault-isolation"],
     },
     database: {
@@ -918,12 +923,12 @@
     sqlite: {
       term: "SQLite", chapter: 12,
       def: "A complete database stored in one ordinary file, built into Python. No server to run.",
-      project: "The 24-hour collector run writes everything into one SQLite file.",
+      project: "The collector run writes everything into one SQLite file.",
       related: ["database"],
     },
     "fault-isolation": {
       term: "Fault isolation", aliases: ["failure isolation"], chapter: 12,
-      def: "Designing a system so one broken part can't take the others down. If Coinbase times out, Kraken and Phoenix are still recorded for that tick.",
+      def: "Designing a system so one broken part can't take the others down. If Coinbase times out, Kraken and Phoenix are still recorded for that round.",
       related: ["collector", "uptime", "exponential-backoff"],
     },
     sharding: {
@@ -960,7 +965,7 @@
     "db-transaction": {
       term: "Database transaction", aliases: ["atomic write"], chapter: 12,
       def: "A group of writes that a database applies all together or not at all, like a bank transfer that can never take money out of one account without putting it in the other. If the program crashes halfway, none of the group is saved.",
-      project: "The collector writes each 5-minute tick (books, quotes, errors) in one transaction, so the database never holds half a tick.",
+      project: "The collector writes each 5-minute snapshot round (books, quotes, errors) in one transaction, so the database never holds half a round.",
       related: ["database", "sqlite", "collector"],
     },
     "compute-budget": {

@@ -6,7 +6,7 @@
  *      fees excluded or all-in, 10% price protection on or off. Computed by OBZ.engine from
  *      the books themselves (an export's stored curves may predate price protection).
  *   4. The collector's time series (export v2): spread, depth within 2% and cost vs the
- *      reference mid over time, cost by size at any tick, for venues and Jupiter routes,
+ *      reference mid over time, cost by size at any round, for venues and Jupiter routes,
  *      plus the raw Jupiter quotes. v1 data (one snapshot) gets a friendly note instead.
  *   5. Load your own export (v1 or v2).
  *
@@ -266,7 +266,7 @@
       const books = keys.filter((k) => !k.startsWith("jupiter:")).sort((a, b) => rank(a) - rank(b));
       return books.concat(keys.filter((k) => k.startsWith("jupiter:")));
     }
-    /** [[t, y], ...] for one metric of one series, with a gap (null) where ticks are missing. */
+    /** [[t, y], ...] for one metric of one series, with a gap (null) where rounds are missing. */
     function points(ts, values, pick) {
       const out = [], t = ts.t, step = ts.interval_s || 300;
       for (let i = 0; i < t.length; i++) {
@@ -360,7 +360,7 @@
         : empty("No cost measurements for this selection, side and size.");
 
       // ---- D. cost by size at one tick
-      const tickSlider = ui.Slider({ label: "Tick", min: 0, max: Math.max(1, n - 1), step: 1, value: state.tick, format: (i) => `${hhmm(t[Math.round(i)])} UTC${Math.round(i) === n - 1 ? " (latest)" : ""}`, onInput: (i) => { state.tick = Math.round(i); redrawBySize(); } });
+      const tickSlider = ui.Slider({ label: "Snapshot round", min: 0, max: Math.max(1, n - 1), step: 1, value: state.tick, format: (i) => `${hhmm(t[Math.round(i)])} UTC${Math.round(i) === n - 1 ? " (latest)" : ""}`, onInput: (i) => { state.tick = Math.round(i); redrawBySize(); } });
       const bySizeBox = h("div");
       function redrawBySize() {
         const i = state.tick;
@@ -375,7 +375,7 @@
         const safe = logSafe(ser, (s) => { if (!hid.includes(s.name)) hid.push(s.name); });
         put(clear(bySizeBox), hasData(safe)
           ? ui.LineChart({ series: safe, height: 260, table: true, x: { log: true, label: "Trade size (USD)", format: fmt.usdCompact, ticks: PICK }, y: Object.assign({ label: "Cost vs ref (bps)", format: yFmt }, state.tsLog ? { log: true } : {}), alt: `Cost of a market ${state.tsSide} against the reference mid by trade size at ${hhmm(t[i])} UTC.` })
-          : empty("No cost measurements for this selection at this tick."),
+          : empty("No cost measurements for this selection in this round."),
         hid.length ? h("p", { class: "fine", text: `Not drawn on the log axis (at or below 0 bps, i.e. better than the reference mid): ${hid.join(", ")}. Switch to Linear to see them.` }) : null);
       }
       redrawBySize();
@@ -383,7 +383,7 @@
       // ---- Jupiter quotes
       const jq = ds.jupiter || [];
       const jupBox = jq.length ? h("details", null,
-        h("summary", { style: "cursor: pointer; color: var(--accent); font-weight: 600; min-height: 36px; display: flex; align-items: center;", text: `The raw Jupiter quotes from the latest tick (${jq.length})` }),
+        h("summary", { style: "cursor: pointer; color: var(--accent); font-weight: 600; min-height: 36px; display: flex; align-items: center;", text: `The raw Jupiter quotes from the latest round (${jq.length})` }),
         ui.p("Each row is one quote request: Jupiter was asked for the best way to trade the size, either across every pool (*best*) or through one venue only. The route lists the pools it would use, in order.", "fine"),
         ui.Table({
           caption: "Jupiter quotes: cost in bps against the reference mid", dense: true,
@@ -393,14 +393,14 @@
             { label: "Size", value: (q) => fmt.usdCompact(q.usd) },
             { label: "Cost (bps)", value: (q) => (typeof q.cost_bps_vs_ref === "number" ? fmt.num(q.cost_bps_vs_ref, 2) : "–") },
             { label: "Avg price", value: (q) => (typeof q.avg_price === "number" ? "$" + fmt.price(q.avg_price, 3) : "–") },
-            { label: "Route", align: "left", mono: false, value: (q) => (q.ok === false ? (/NO_ROUTES/.test(String(q.error || "")) ? "no route found" : "quote failed") : Array.isArray(q.route) && q.route.length ? q.route.join(" → ") : "–") },
+            { label: "Route", align: "left", mono: false, value: (q) => (q.ok === false ? (/NO_ROUTES/.test(String(q.error || "")) ? "no route found" : "quote failed") : Array.isArray(q.route) && q.route.length ? OBZ.lessons.amm.routeText(q.route) : "–") },
           ],
           rows: jq,
         }))
         : ui.p("This dataset has no Jupiter quotes.", "fine");
 
       const nTicks = n === 1 ? "1 measurement" : `${n} measurements`;
-      // How do the books above relate to these ticks? (Said from the data, not assumed.)
+      // How do the books above relate to these rounds? (Said from the data, not assumed.)
       const snapT = Math.max(0, ...ds.venues.map((v) => v.fetchedAt || 0));
       let when = "";
       if (snapT && snapT < t0 - 60) {
@@ -408,25 +408,25 @@
         const ph = ts.series.phoenix && ts.series.phoenix.spread_bps, s0 = data.snapshot("phoenix");
         const first = ph ? ph.find((x) => typeof x === "number") : undefined;
         const snapSpread = s0 ? s0.spreadBps() : null;
-        if (first !== undefined && snapSpread && (first > snapSpread * 2 || first < snapSpread / 2)) when += ` Phoenix's spread, for example, was ${fmt.bps(snapSpread)} in the snapshot and ${fmt.bps(first)} at the first tick.`;
-      } else if (snapT && Math.abs(snapT - t1) <= (ts.interval_s || 300)) when = " The books above are from the last of these ticks.";
+        if (first !== undefined && snapSpread && (first > snapSpread * 2 || first < snapSpread / 2)) when += ` Phoenix's spread, for example, was ${fmt.bps(snapSpread)} in the snapshot and ${fmt.bps(first)} in the first round.`;
+      } else if (snapT && Math.abs(snapT - t1) <= (ts.interval_s || 300)) when = " The books above are from the last of these rounds.";
       put(tsBox, 
-        ui.p(`**${nTicks}**, one every ${Math.round((ts.interval_s || 300) / 60)} minutes, from ${hhmm(t0)} to ${hhmm(t1)} UTC on ${day}, recorded by the project's collector.${when} Every cost is measured against the [[reference-mid|reference mid]] at the same tick, so books and AMM routes are comparable. A gap in a line is a tick that wasn't recorded.`, "fine"),
+        ui.p(`**${nTicks}**, one every ${Math.round((ts.interval_s || 300) / 60)} minutes, from ${hhmm(t0)} to ${hhmm(t1)} UTC on ${day}, recorded by the project's collector. Each measurement is a *snapshot round* (the project's code calls it a tick; in this course a tick is only the price step).${when} Every cost is measured against the [[reference-mid|reference mid]] in the same round, so books and AMM routes are comparable. A gap in a line is a round that wasn't recorded.`, "fine"),
         labelled("Show", picker),
         h("div", { style: S.controls }, labelled("Vertical axis", scale)),
         h("h3", { style: S.h3, text: "Spread over time" }),
-        ui.p("The [[spread]] in basis points at each tick. A flat line means the best bid and ask barely moved; a high line means buyers and sellers were far apart.", "fine"),
+        ui.p("The [[spread]] in basis points in each round. A flat line means the best bid and ask barely moved; a high line means buyers and sellers were far apart.", "fine"),
         spreadChart,
         h("h3", { style: S.h3, text: "Depth within 2% over time" }),
         ui.p("Dollars resting within 2% of each book's mid: bids solid, asks dashed. More depth near the price means big orders move the price less.", "fine"),
         depthChart,
-        zeroDepth.length ? h("p", { class: "fine", text: `${zeroDepth.join(", ")}: $0 within 2% at every tick. Its best bid and best ask were both more than 2% from its mid, so nothing rested that close.` }) : null,
+        zeroDepth.length ? h("p", { class: "fine", text: `${zeroDepth.join(", ")}: $0 within 2% in every round. Its best bid and best ask were both more than 2% from its mid, so nothing rested that close.` }) : null,
         h("h3", { style: S.h3, text: "Cost of one trade size over time" }),
-        ui.p("What a market order of the chosen size cost against the reference mid, tick by tick, on each book and through each [[jupiter|Jupiter]] [[route]]. Below 0 means the trade beat the reference price.", "fine"),
+        ui.p("What a market order of the chosen size cost against the reference mid, round by round, on each book and through each [[jupiter|Jupiter]] [[route]]. Below 0 means the trade beat the reference price.", "fine"),
         costControls, costChart,
-        hiddenNotes.length && state.tsLog ? h("p", { class: "fine", text: `Not drawn on the log axis (at or below 0 bps, i.e. better than the reference mid) at some ticks: ${hiddenNotes.join(", ")}. A gap in those lines is such a point; switch to Linear to see every point.` }) : null,
+        hiddenNotes.length && state.tsLog ? h("p", { class: "fine", text: `Not drawn on the log axis (at or below 0 bps, i.e. better than the reference mid) in some rounds: ${hiddenNotes.join(", ")}. A gap in those lines is such a point; switch to Linear to see every point.` }) : null,
         h("h3", { style: S.h3, text: "Cost by trade size, at one moment" }),
-        ui.p("Pick a tick to see every size at once: the same shape as an [[impact-curve|impact curve]], measured from the reference mid. Lines that stop early had no quote (for example, no route found) at the bigger sizes.", "fine"),
+        ui.p("Pick a round to see every size at once: the same shape as an [[impact-curve|impact curve]], measured from the reference mid. Lines that stop early had no quote (for example, no route found) at the bigger sizes.", "fine"),
         tickSlider, bySizeBox,
         jupBox);
     }

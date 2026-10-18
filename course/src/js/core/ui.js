@@ -165,15 +165,25 @@
 
   const CALLOUT = { note: "Note", tip: "Tip", warn: "Careful", real: "In the real world", project: "In this project" };
   const CALLOUT_ICON = { note: "i", tip: "★", warn: "!", real: "◆", project: "▣" };
-  /** Callout({kind: note|tip|warn|real|project, title, body: string|node}) */
-  function Callout({ kind = "note", title, body, children }) {
+  /** Callout({kind: note|tip|warn|real|project, title, body: string|node, open}). A "project" callout
+   *  (code and file names) is programmer material, so it is folded into ForProgrammers unless open: true. */
+  function Callout({ kind = "note", title, body, children, open }) {
     const k = CALLOUT[kind] ? kind : "note";
-    return h("aside", { class: `callout callout-${k}`, attrs: { role: "note" } },
+    const box = h("aside", { class: `callout callout-${k}`, attrs: { role: "note" } },
       h("span", { class: "callout-icon", attrs: { "aria-hidden": "true" }, text: CALLOUT_ICON[k] }),
       h("div", { class: "callout-body" },
         h("p", { class: "callout-title" }, richSafe(title || CALLOUT[k])),
         typeof body === "string" ? prose(body) : body || null,
         children || null));
+    return k === "project" && !open ? ForProgrammers({ title: title || CALLOUT[k], children: box }) : box;
+  }
+
+  /** ForProgrammers({title, children}): a collapsed "For programmers (optional)" block. Everything a
+   *  non-programmer needs is in the prose and widgets around it; this holds code-level detail. */
+  function ForProgrammers({ title, children, open = false }) {
+    return h("details", { class: "for-programmers", open },
+      h("summary", null, h("span", { class: "fp-tag", text: "For programmers (optional)" }), title ? h("span", { class: "fp-title" }, richSafe(title)) : null),
+      h("div", { class: "fp-body" }, children || null));
   }
 
   /** Figure({children, caption, alt, label}) . alt is the text alternative for the visual. */
@@ -283,7 +293,7 @@
   }
 
   /** NumberCheck({question, answer, tolerance, unit, explain, hint}): "work it out yourself" */
-  function NumberCheck({ question, answer, tolerance = 0.01, unit = "", explain, hint }) {
+  function NumberCheck({ question, answer, tolerance = 0.01, unit = "", explain, hint, onCorrect }) {
     const id = uid("nc");
     const input = h("input", { type: "text", id, class: "input mono", inputMode: "decimal", autocomplete: "off", attrs: { "aria-describedby": id + "-fb" } });
     const fb = h("div", { class: "nc-feedback", id: id + "-fb", attrs: { "aria-live": "polite" } });
@@ -297,6 +307,7 @@
       fb.className = "nc-feedback " + (ok ? "is-ok" : "is-bad");
       fb.appendChild(h("strong", { text: ok ? "✓ Yes. " : "✗ Not quite. " }));
       if (ok && explain) fb.appendChild(richSafe(typeof explain === "function" ? explain() : explain));
+      if (ok && onCorrect) onCorrect();
       else if (!ok) fb.appendChild(richSafe(hint ? (typeof hint === "function" ? hint(v) : hint) : `Check your arithmetic and try again.`));
     }
     input.addEventListener("keydown", (e) => { if (e.key === "Enter") check(); });
@@ -427,7 +438,8 @@
         clear(fb);
         fb.className = "quiz-feedback " + (correct ? "is-ok" : "is-bad");
         fb.appendChild(h("strong", { text: correct ? "✓ Correct. " : "✗ Not quite. " }));
-        fb.appendChild(richSafe(q.options[oi].why || ""));
+        // the badge already says "Correct", so drop a leading "Right." from the explanation
+        fb.appendChild(richSafe(String(q.options[oi].why || "").replace(correct ? /^(Right|Correct)\.\s*/ : /^$/, "")));
         if (!correct) fb.appendChild(h("span", { class: "quiz-retry", text: " Try another answer." }));
         if (record) { OBZ.store.quiz.record(id, qi, oi, correct); updateScore(true); }
       }
@@ -565,7 +577,7 @@ self.onmessage = function (e) {
   function CodeExercise(ex) {
     const st = OBZ.store.exercises;
     const taId = uid("code");
-    const ta = h("textarea", { id: taId, class: "code-editor", spellcheck: false, autocapitalize: "off", autocomplete: "off", attrs: { "aria-describedby": taId + "-help", wrap: "off" } });
+    const ta = h("textarea", { id: taId, class: "code-editor", spellcheck: false, autocapitalize: "off", autocomplete: "off", attrs: { "aria-describedby": taId + "-help", "aria-label": "Your code: " + String(ex.title || "exercise").replace(/[*`]/g, ""), wrap: "off" } });
     ta.value = st.code(ex.id, ex.starter);
     const save = OBZ.util.debounce(() => st.saveCode(ex.id, ta.value), 300);
     let escaped = false;
@@ -837,6 +849,7 @@ self.onmessage = function (e) {
       ctx.font = `${small ? 10 : 11}px ${T.mono}`; ctx.lineWidth = 1; ctx.textBaseline = "middle";
       const yfmt = o.unit === "usd" ? fmt.usdCompact : (v) => (v >= 1000 ? fmt.num(v / 1000, 1) + "k" : fmt.num(v, 0));
       for (const v of linTicks(0, ymax, 4)) { const y = Y(v); ctx.strokeStyle = T.grid; ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(w - R, y); ctx.stroke(); ctx.fillStyle = T.muted; ctx.textAlign = "right"; ctx.fillText(yfmt(v), L - 6, y); }
+      ctx.fillStyle = T.muted; ctx.textAlign = "left"; ctx.fillText(o.unit === "usd" ? "USD, added up" : "SOL, added up", L + 6, Tp + 8);
       const area = (pts, end, line, soft) => {
         if (!pts.length) return;
         ctx.beginPath(); ctx.moveTo(X(mid), Y(0)); let prev = 0;
@@ -1044,7 +1057,7 @@ self.onmessage = function (e) {
 
   OBZ.ui = {
     rich: richSafe, p, prose, link,
-    Term, Section, Callout, Figure, TryIt, Stat, StatGrid, Table, ProgressBar,
+    Term, Section, Callout, ForProgrammers, Figure, TryIt, Stat, StatGrid, Table, ProgressBar,
     Button, Segmented, VenuePicker, Slider, NumberCheck, DataLoader,
     Stepper, Quiz, Flashcards, CodeExercise, runCode,
     LineChart, DepthChart, Ladder, HexView, decodeLE, hexToBytes,

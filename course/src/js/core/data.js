@@ -166,7 +166,9 @@
       need(isNum(q.usd) && q.usd > 0, `${p}.usd`, "must be a positive number");
       optNum(q.cost_bps_vs_ref, `${p}.cost_bps_vs_ref`);
       optNum(q.slot, `${p}.slot`, { min: 0 });
-      if (q.route !== undefined) need(Array.isArray(q.route) && q.route.every((r) => typeof r === "string" && r.length <= 60), `${p}.route`, "must be a list of pool names");
+      // A leg is a pool name, or {label, input_mint?, output_mint?} when the export keeps the tokens each leg swaps.
+      const legOk = (r) => (typeof r === "string" && r.length <= 60) || (isObj(r) && typeof r.label === "string" && r.label.length <= 60);
+      if (q.route !== undefined) need(Array.isArray(q.route) && q.route.every(legOk), `${p}.route`, "must be a list of pool names");
     });
   }
 
@@ -201,8 +203,11 @@
         depthUsd: v.depth_usd || null,
       };
     });
-    const when = d.generated_at ? OBZ.util.fmt.date(d.generated_at) : "";
-    const lbl = source === "builtin" ? `Built-in snapshots${when ? " · " + when : ""}` : `${source === "file" ? "Your file" : "Your pasted export"}${when ? " · " + when : ""}`;
+    // Label a dataset by when its books were fetched (not when the file was written).
+    const fetched = venues.map((v) => v.fetchedAt).filter((t) => isNum(t) && t > 0);
+    const t = fetched.length ? Math.min(...fetched) : d.generated_at;
+    const when = t ? OBZ.util.fmt.date(t) : "";
+    const lbl = source === "builtin" ? `Built-in snapshots${when ? " · fetched " + when : ""}` : `${source === "file" ? "Your file" : "Your pasted export"}${when ? " · fetched " + when : ""}`;
     return {
       kind: d.kind, version: d.version, generatedAt: d.generated_at || 0, source, label: lbl,
       venues, ammUsdReserve: isNum(d.amm_usd_reserve) ? d.amm_usd_reserve : null,

@@ -130,10 +130,10 @@
   ];
   const CAPTIONS = [
     "An empty queue of asks at **$104.00**. Sellers will line up here.",
-    "**Alice** posts 4 SOL. The queue was empty, so she is at the front (the head).",
-    "**Bob** posts 4 SOL. He joins at the back (the tail), behind Alice.",
+    "**Alice** posts 4 SOL. The queue was empty, so she is at the front.",
+    "**Bob** posts 4 SOL. He joins at the back, behind Alice.",
     "**Carol** posts 2 SOL and joins behind Bob.",
-    "**Bob cancels.** His order is unlinked from the middle of the queue, and Carol moves up to second.",
+    "**Bob cancels.** His order is removed from the middle of the queue, and Carol moves up to second.",
     "**Dave** posts 3 SOL. He joins at the back, behind Carol. A gap left by a cancel doesn't save a spot for anyone.",
     "A buyer sends a market order for **7 SOL**. The front of the queue trades first: Alice fills **4 SOL** at $104.00 and leaves.",
     "The buyer still needs 3 SOL. Next in line is Carol: she fills **2 SOL** and leaves.",
@@ -146,12 +146,12 @@
       answer: (b) => { const pos = b.queuePosition(4), n = b.level(ASK, PRICE).count; return pos === 1 ? "front" : pos === n ? "back" : "gap"; },
       why: "New orders always join the back of the queue. Bob's old position isn't kept for anyone." },
     6: { q: "A buyer wants 7 SOL. Whose order fills first?", options: [["1", "Alice"], ["3", "Carol"], ["4", "Dave"]], answer: (b, f) => String(f[0].makerOrderId),
-      why: "Alice is at the head of the queue: she arrived first at this price." },
+      why: "Alice is at the front of the queue: she arrived first at this price." },
     7: { q: "Alice's 4 SOL are gone and the buyer needs 3 more. Who fills next?", options: [["3", "Carol"], ["4", "Dave"], ["both", "They share it"]], answer: (b, f) => String(f[1].makerOrderId),
       why: "Carol is next in line, so she fills before Dave. Time priority never splits an order between people; it goes strictly in order." },
     8: { q: "The buyer needs 1 more SOL and Dave has 3. Once Dave has sold 1, where are his other 2?", options: [["front", "Still at the front"], ["back", "Moved to the back"], ["all", "None left: all 3 fill"]],
       answer: (b) => (b.queuePosition(4) === 1 ? "front" : "back"),
-      why: "The buyer only wanted 1 more, so Dave trades 1. His remaining 2 SOL keep their place at the head of the queue." },
+      why: "The buyer only wanted 1 more, so Dave trades 1. His remaining 2 SOL keep their place at the front of the queue." },
     9: { q: "Bob posts 4 SOL again. Where does he go?", options: [["old", "His old 2nd place"], ["front", "The front"], ["back", "The back, behind Dave"]],
       answer: (b) => (b.queuePosition(5) === b.level(ASK, PRICE).count ? "back" : "front"),
       why: "A cancelled order is gone for good. The new one is timestamped now, so it waits behind everyone already there." },
@@ -276,7 +276,8 @@
         h("div", { class: "step-stage" }, ui.Figure({ children: svg, alt: "Cards for each resting order at $104.00, front of the queue on the left. Cancelled and filled orders appear faded for one step before they leave." })),
         caption, quizBox,
         h("div", { class: "step-controls" }, reset, back, next, count, score)),
-      engineLine, fillsLine);
+      fillsLine,
+      ui.ForProgrammers({ title: "What the engine reports", children: engineLine }));
   }
 
   /* ------------------------------------------------------------------ the chapter */
@@ -318,10 +319,10 @@ Why this rule? Two reasons.
 
 First, it rewards showing your hand early. A [[market-maker|market maker]] who posts a good price first is first to trade at it, so there is a reason to quote early and openly instead of waiting to see what others do.
 
-Second, it is completely **deterministic**: the same orders arriving in the same sequence always produce exactly the same fills, with no randomness and no judgment calls. On a blockchain that is essential. On [[solana|Solana]], every [[validator]] re-runs each transaction, and they must all reach exactly the same result. [[determinism|Determinism]] is the subject of [chapter 7](#/learn/7).`),
+Second, it is simple and cheap. A taker only ever touches the front of each queue: fill the oldest order, then the next, and stop. Nothing has to be shared out or recalculated across everyone at the price. That matters wherever every step costs something, as on [[solana|Solana]], where a program pays in compute for each step it takes. (Any fixed rule, pro-rata included, gives the same fills every time it runs on the same orders; that property, [[determinism]], is the subject of [chapter 7](#/learn/7).)`),
         ui.Callout({
           kind: "note", title: "The alternative: pro-rata",
-          body: `Not every exchange uses time priority. Under [[pro-rata|pro-rata matching]], an incoming order is shared among all orders at the best price in proportion to their size. If Alice rests 6 SOL and Bob 2 SOL, a buyer of 4 SOL gets 3 from Alice and 1 from Bob, whoever came first. Some futures exchanges use it. It rewards posting big orders rather than posting early, which can tempt traders to show more size than they really want to trade. The engine in this project uses price-time priority.`,
+          body: `Not every exchange uses time priority. Under [[pro-rata|pro-rata matching]], an incoming order is shared among all orders at the best price in proportion to their size. If Alice rests 6 SOL and Bob 2 SOL, a buyer of 4 SOL gets 3 from Alice and 1 from Bob, whoever came first. Some futures exchanges (markets for contracts to buy or sell something at a set price on a later date) use it. It rewards posting big orders rather than posting early, which can tempt traders to show more size than they really want to trade. The engine in this project uses price-time priority.`,
         }),
         ui.Callout({
           kind: "project", title: "How the engine keeps the queue",
@@ -347,14 +348,14 @@ Second, it is completely **deterministic**: the same orders arriving in the same
         intro: "Four sellers share one price, $104.00. Step through what happens: three orders arrive, Bob cancels, Dave arrives, a buyer takes 7 SOL, and Bob tries again. In **Guess first** mode you predict each key moment before you see it. Every state comes from the matching engine.",
         children: buildTry(ctx),
       }),
-      ui.Callout({
+      ui.ForProgrammers({ title: "Practice: three LeetCode problems", children: ui.Callout({
         kind: "tip", title: "Practice: three LeetCode problems",
         body: `If you'd like to code these ideas, these problems on LeetCode fit this chapter:
 
 - [LC 1700, Number of Students Unable to Eat Lunch](https://leetcode.com/problems/number-of-students-unable-to-eat-lunch/) (easy): a warm-up in simulating a queue.
 - [LC 2073, Time Needed to Buy Tickets](https://leetcode.com/problems/time-needed-to-buy-tickets/) (easy): a FIFO line where people take a little at a time, the same shape as partial fills.
 - [LC 1801, Number of Orders in the Backlog](https://leetcode.com/problems/number-of-orders-in-the-backlog/) (medium): an order book matching problem. Solve it with two heaps, then ask why heaps alone make cancels hard.`,
-      }));
+      }) }));
     },
 
     quiz: [
@@ -373,18 +374,18 @@ Second, it is completely **deterministic**: the same orders arriving in the same
         options: [
           { text: "Back in second place, since the order is identical", why: "The exchange doesn't remember cancelled orders. The new one is a different order that arrived just now." },
           { text: "At the front, as a reward for re-posting", why: "Nothing rewards re-posting. Time priority only looks at when the current order arrived." },
-          { text: "At the back of the queue", why: "Right. A cancel removes his order for good, and the new order joins the tail like any new arrival. That is why traders think twice before cancelling." },
+          { text: "At the back of the queue", why: "Right. A cancel removes his order for good, and the new order joins the back like any new arrival. That is why traders think twice before cancelling." },
           { text: "Nowhere: you can't re-post after cancelling", why: "You can post as often as you like. You just lose your old place in line." },
         ],
         answer: 2,
       },
       {
-        q: "Jae posted 5 SOL at **$104.05** at 8:55. Hana posted 3 SOL at **$104.00** at 9:00. A buyer wants 2 SOL. Who sells to the buyer?",
+        q: "Two buyers are waiting. Uma bid for 4 SOL at **$103.90** at 10:00. Vic bid for 6 SOL at **$103.95** at 10:05. A seller sends a market sell for 3 SOL. Who buys it?",
         options: [
-          { text: "Jae, because Jae arrived first", why: "Time only breaks ties between orders at the same price. Hana's price is better for the buyer, so she goes first." },
-          { text: "Hana, because her price is better", why: "Right. Price priority comes first: the buyer gets the cheapest SOL available, $104.00. Arrival time only matters within one price." },
-          { text: "They share it, 1 SOL each", why: "Orders at different prices never share. The better price trades first, and Hana has enough for all 2 SOL." },
-          { text: "Whoever has more SOL, so Jae", why: "Size doesn't decide priority. Better price first, then earlier arrival." },
+          { text: "Uma, because she bid first", why: "Time only breaks ties between orders at the same price. Vic offers more, which is the better price for the seller, so he goes first." },
+          { text: "Vic, because his bid is higher", why: "Right. Price priority comes first: the seller gets the highest bid available, $103.95. Arrival time only matters within one price." },
+          { text: "They share it, 1.5 SOL each", why: "Orders at different prices never share. The better price trades first, and Vic wants enough for all 3 SOL." },
+          { text: "Whoever wants more SOL, so Vic", why: "Vic does go first, but not because of size. Size doesn't decide priority: better price first, then earlier arrival." },
         ],
         answer: 1,
       },

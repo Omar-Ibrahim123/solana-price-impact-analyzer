@@ -209,7 +209,7 @@
     const curves = new Map(); // dataset label|side -> series
 
     const pickerBox = h("div");
-    const sideSeg = ui.Segmented({ label: "Side", value: side, options: [{ value: "buy", label: "▲ Buy (lift asks)" }, { value: "sell", label: "▼ Sell (hit bids)" }], onChange: (s) => { side = s; store.set("ch5.side", s); render(); } });
+    const sideSeg = ui.Segmented({ label: "Side", value: side, options: [{ value: "buy", label: "▲ Buy (take the asks)" }, { value: "sell", label: "▼ Sell (into the bids)" }], onChange: (s) => { side = s; store.set("ch5.side", s); render(); } });
     const slider = ui.Slider({ label: "Trade size", min: 1000, max: 1000000, value: size, log: true, format: (x) => fmt.usd(niceSize(x), 0), onInput: (x) => { size = niceSize(x); schedule(); } });
     const quick = h("div", { class: "btn-row" }, [1e3, 1e4, 1e5, 1e6].map((s) => ui.Button({ label: fmt.usdCompact(s), small: true, variant: "ghost", attrs: { "aria-label": "Set trade size to " + fmt.usd(s, 0) }, onClick: () => { size = s; slider.api.set(s); render(); } })));
     const stats = {
@@ -295,7 +295,7 @@
       ui.StatGrid(Object.values(stats), { live: true }), note, tableBox,
       ui.Figure({
         children: chart,
-        caption: "The same simulation at 25 sizes per venue: an [[impact-curve|impact curve]] on a [[log-scale|log scale]]. Where a curve starts is the half-spread; how fast it climbs is depth. Hollow markers are partial fills (the book ran out inside the 10% band). The thin vertical line is your size.",
+        caption: "The same simulation at 25 sizes per venue: an [[impact-curve|impact curve]] on a [[log-scale|log scale]]. Where a curve starts is the half-spread; how fast it climbs is depth. Hollow markers are partial fills (the book ran out inside the 10% band). That is why Phoenix's buy line goes flat at the big sizes: those orders only partly fill, so the impact stays at what the filled part paid. The thin vertical line is your size.",
       }));
   }
 
@@ -319,8 +319,8 @@
     const chart = ui.LineChart({
       series: [], height: 250, table: true,
       x: { log: true, label: "Trade size (USD, log scale)", format: fmt.usdCompact, ticks: [1e3, 1e4, 1e5, 1e6] },
-      y: { label: "Impact (bps)", format: (x) => x.toFixed(0), min: 0 },
-      alt: "Model impact curves for venue A and venue B",
+      y: { log: true, label: "Impact (bps, log scale)", format: (x) => (x < 10 ? fmt.num(x, 1) : x.toFixed(0)) },
+      alt: "Model impact curves for venue A and venue B, both axes on log scales",
     });
     const sl = (key, label, opts) => ui.Slider(Object.assign({ label, value: st[key], onInput: (x) => { st[key] = opts.log ? Math.round(x) : x; schedule(); } }, opts));
     const controls = h("div", { class: "grid-2" },
@@ -360,8 +360,10 @@
       });
       const cheaper = (i) => (a[i] < b[i] ? "A" : b[i] < a[i] ? "B" : "neither");
       const first = 0, last = MODEL_SIZES.length - 1;
+      const kTxt = (k) => (k >= 0.01 ? fmt.num(k, 3) : k.toPrecision(2));
       clear(out).append(
         ui.p(`At **$1K**: A ${fmt.bps(a[first], 1)}, B ${fmt.bps(b[first], 1)}. At **$1M**: A ${fmt.bps(a[last], 1)}, B ${fmt.bps(b[last], 1)}.`),
+        ui.p(`Rule of thumb, with Q the SOL bought: **A ≈ ${fmt.num(st.aS / 2, 1)} + ${kTxt(kA)} × Q bps** and **B ≈ ${fmt.num(st.bS / 2, 1)} + ${kTxt(kB)} × Q bps**. The first number is the half-spread; the second is $0.01 ÷ 2 ÷ (SOL per level) ÷ $104 × 10,000, the cost of climbing.${qStar !== null && qStar > 0 ? ` They are equal when Q = (${fmt.num(st.bS / 2, 1)} − ${fmt.num(st.aS / 2, 1)}) ÷ (${kTxt(kA)} − ${kTxt(kB)}) ≈ ${fmt.sol(qStar)} SOL.` : ""}`),
         ui.p(cross
           ? `Venue ${cheaper(first)} is cheaper below about **${fmt.usd(niceSize(cross), 0)}**, venue ${cheaper(last)} above it.` +
             (qStar !== null && qStar > 0 ? ` The rule of thumb below predicts ${fmt.sol(qStar)} SOL ≈ ${fmt.usd(niceSize(qStar * MODEL_MID), 0)}.` : "")
@@ -373,7 +375,7 @@
       caption: "A **model**, not real data: each book has its best ask half a spread above a $104 mid, then a price level every $0.01 holding the same amount of SOL.",
     }), out,
     h("p", { class: "formula" }, "impact ≈ half-spread + (SOL bought ÷ SOL per level) × $0.01 ÷ 2 ÷ mid × 10,000"),
-    ui.p("Why: buying Q SOL on levels of d SOL each climbs Q ÷ d levels, a cent each, and on average you pay about half of that climb. Set the two right-hand sides equal and solve for Q: that is the crossover. Below it the half-spread decides; above it, depth does."));
+    ui.p("Why: buying Q SOL on levels of d SOL each climbs Q ÷ d levels, a cent each, and on average you pay about half of that climb. Set the two right-hand sides equal and solve for Q: that is the crossover. Below it the half-spread decides; above it, depth does. The exact crossover (found by walking the two model books) and the rule-of-thumb one differ a little, because the rule treats the climb as a smooth slope while real levels are steps."));
   }
 
   /* ------------------------------------------------------------------ the chapter */
@@ -413,6 +415,7 @@ That average is the [[average-fill-price|average fill price]]: total dollars pai
 
 - Dollars: 25 × 104.35 + 70.798 × 104.40 = 2,608.75 + 7,391.31 = **$10,000.06**
 - SOL: 25 + 70.798 = **95.798**
+- (A few cents over $10,000, because sizes come in whole lots of 0.001 SOL, so the last level is rounded up to a whole lot.)
 - Average: 10,000.06 ÷ 95.798 ≈ **$104.387**
 - Impact: (104.387 − 104.050) ÷ 104.050 × 10,000 ≈ **32.4 bps**
 
@@ -424,7 +427,7 @@ That last line is the key idea. Measured against the mid, every trade pays at le
 So the [[spread]] decides the cost of small trades, and depth decides the cost of large ones. Phoenix's wide spread made a $1,000 buy cost about 29 bps there, against under 1 bp on [[kraken|Kraken]]. For a $1,000,000 buy, Kraken's millions of dollars of depth kept the cost near 10 bps.`),
         tenKTable(ctx),
         ui.prose(`
-One more rule keeps these numbers honest. Phoenix's raw book also held [[junk-quote|junk quotes]]: asks at $9,999,999,999 and bids at $0.001. A "$1M buy" with no limit would fill against them and report nonsense (the README measured about 56,000 bps). So, like a careful trader, the simulator gives every order [[price-protection|price protection]]: it never trades more than 10% away from the mid, and whatever can't fill inside that band is reported as a partial fill. In this snapshot only $47,069 of Phoenix asks sat inside the band, so a $100K buy fills only partly. [Chapter 11](#/learn/11) tells the full story.`),
+One more rule keeps these numbers honest. Real books also hold absurd [[junk-quote|junk quotes]] far from the market ([chapter 11](#/learn/11) tells that story), so, like a careful trader, the simulator gives every order [[price-protection|price protection]]: it never trades more than 10% away from the mid, and whatever can't fill inside that band is reported as a partial fill. In this snapshot only $47,069 of Phoenix asks sat inside the band, so a $100K buy fills only partly.`),
         ui.Callout({
           kind: "project", title: "Where this lives in the code",
           body: `\`impact.py\` does exactly this. \`lots_for_notional\` walks the opposite side to find how many lots a dollar amount needs (rounding the last level up to a whole lot), then \`simulate\` loads the snapshot into a fresh \`OrderBook\` and sends one market order with a 10% limit price. It never re-implements matching. Every number in this chapter comes from a JavaScript port of that code which reproduces its results bit for bit.`,
@@ -489,7 +492,7 @@ One more rule keeps these numbers honest. Phoenix's raw book also held [[junk-qu
       {
         q: "Venue A has a 2 bps spread and 20 SOL per price level. Venue B has a 12 bps spread and 800 SOL per level. Which is cheaper for a $1,000 buy, and for a $1,000,000 buy?",
         options: [
-          { text: "A for both: a tighter spread is always cheaper", why: "The spread only sets where the impact curve starts. A $1M order on A must climb thousands of thin levels, so its depth cost swamps the 10 bps it saved on the spread." },
+          { text: "A for both: a tighter spread is always cheaper", why: "The spread only sets where the impact curve starts. A $1M order on A must climb hundreds of thin levels (about 480), so its depth cost swamps the 10 bps it saved on the spread." },
           { text: "A for $1,000, B for $1,000,000", why: "A $1,000 buy (under 10 SOL) fits in the first level of either venue, so it pays only the half-spread: 1 bps on A against 6 bps on B. A $1M buy (about 9,600 SOL) climbs hundreds of A's levels but only a dozen of B's, so B's depth wins. The curves cross in between." },
           { text: "B for both: a deeper book is always cheaper", why: "Depth only helps once a trade is bigger than the first level. A $1,000 buy never leaves the best ask, so it pays B's half-spread of 6 bps instead of A's 1 bps." },
           { text: "They cost the same, because the mid is the same", why: "The same mid is the starting point, but the two books offer different prices around it. Impact depends on the spread and on how much size sits at each level." },

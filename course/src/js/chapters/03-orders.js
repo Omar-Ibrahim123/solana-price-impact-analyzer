@@ -285,7 +285,7 @@
           const pos = book.queuePosition(r.id);
           const lv = book.level(side, ticks);
           const best = (side === BID ? book.bestBid() : book.bestAsk()) === ticks;
-          out.push(`It joined the queue at ${P(ticks)} in position **${pos} of ${lv.count}**${best ? `, and it is now the **best ${buy ? "bid" : "ask"}**` : ""}. As a maker, it waits for a taker to come to it. Here nobody else is trading, so try sending ${buy ? "a sell" : "a buy"} that reaches it.`);
+          out.push(`It joined the queue at ${P(ticks)} in position **${pos} of ${lv.count}** (number ${pos} in line at that price)${best ? `, so it sits at the **best ${buy ? "bid" : "ask"} price**, ${pos === 1 ? "first in line" : `number ${pos} in line`}` : ""}. As a maker, it waits for a taker to come to it. Here nobody else is trading, so try sending ${buy ? "a sell" : "a buy"} that reaches it.`);
         }
       }
 
@@ -298,12 +298,16 @@
         out.push(`${ok ? "✓" : "✗"} You predicted **${names[state.guess]}**; the answer was **${names[role]}**.`);
         state.guess = null; guessSeg.api.set(null);
       }
+      if (fills.some((f) => f.makerOrderId >= USER_BASE)) out.push("**You traded with yourself:** one of the resting orders you hit was your own. Many real exchanges block this (\"self-trade prevention\"); this simple engine allows it.");
       for (const t of out) result.appendChild(h("p", null, ui.rich(t)));
+      // the result sits under the ticket: on a small screen, bring it into view
+      const rr = result.getBoundingClientRect();
+      if (rr.top > window.innerHeight - 60 || rr.bottom < 0) result.scrollIntoView({ block: "nearest" });
 
       // Fills table
       clear(fillsBox);
       if (fills.length) {
-        const rows = fills.slice(0, 8).map((f, k) => ({ n: k + 1, price: P(f.priceTicks), size: S(f.sizeLots), maker: f.makerOrderId >= USER_BASE ? `#${f.makerOrderId - USER_BASE + 1} (your own order)` : `#${f.makerOrderId}` }));
+        const rows = fills.slice(0, 8).map((f, k) => ({ n: k + 1, price: P(f.priceTicks), size: S(f.sizeLots), maker: f.makerOrderId >= USER_BASE ? `your order #${f.makerOrderId - USER_BASE + 1}` : `Phoenix order #${f.makerOrderId}` }));
         fillsBox.appendChild(ui.Table({
           caption: fills.length > 8 ? `Your fills (first 8 of ${fills.length})` : "Your fills",
           dense: true,
@@ -322,10 +326,10 @@
         const o = book.orders.get(m.id);
         const buy = m.side === BID;
         mineBox.appendChild(h("div", { class: "btn-row", style: "border-left: 4px solid var(--mine); padding-left: var(--s-3)" },
-          h("span", { class: "mono" }, `#${m.id - USER_BASE + 1} ${buy ? "▲ BID" : "▼ ASK"} ${fmt.sol(units.size(o.sizeLots))} SOL @ $${units.price(m.priceTicks).toFixed(digits)} · queue position ${book.queuePosition(m.id)}`),
+          h("span", { class: "mono" }, `your order #${m.id - USER_BASE + 1} · ${buy ? "▲ BID" : "▼ ASK"} ${fmt.sol(units.size(o.sizeLots))} SOL @ $${units.price(m.priceTicks).toFixed(digits)} · number ${book.queuePosition(m.id)} in line`),
           ui.Button({ label: "Cancel", small: true, variant: "ghost", attrs: { "aria-label": `Cancel your order ${m.id - USER_BASE + 1}` }, onClick: () => {
             book.cancelOrder(m.id); ladder.api.update(book); quickButtons(); renderMine();
-            clear(result).appendChild(h("p", null, ui.rich(`Cancelled order #${m.id - USER_BASE + 1}. It left the book without trading.`)));
+            clear(result).appendChild(h("p", null, ui.rich(`Cancelled your order #${m.id - USER_BASE + 1}. It left the book without trading.`)));
             clear(fillsBox);
           } })));
       }
@@ -403,7 +407,7 @@ The exchange checks each incoming order against the other side of the book. If i
 
 A market order is always a taker. A limit order is a maker if it can't trade at once, and a taker if it can. It can even be both: a buy priced at or above the best ask [[crossing-the-spread|crosses the spread]], trades as a taker as far as its price allows, then rests whatever is left as a maker.`),
         ui.prose(`
-Every [[fill]] happens at the **maker's price**. The maker posted that price first, for everyone to see; the taker only said "this price or better". If the best ask is $104.35 and you send a limit buy at $105.00, you pay $104.35. Your limit is the worst price you'll accept, not the price you pay.
+Each match between the incoming order and one resting order is a [[fill]], and traders say the trade **prints** at its price (it is recorded there). Every fill happens at the **maker's price**. The maker posted that price first, for everyone to see; the taker only said "this price or better". If the best ask is $104.35 and you send a limit buy at $105.00, you pay $104.35. Your limit is the worst price you'll accept, not the price you pay.
 
 This is also why resting orders never trade with each other. Suppose a bid at $104.40 arrives while an ask rests at $104.35. That bid crosses, so it trades at once instead of resting. After every order, then, the best bid is below the best ask. A book where that fails is a [[crossed-book|crossed book]], and a correct engine can never produce one.
 
@@ -414,7 +418,7 @@ One more choice: a limit order's [[time-in-force|time in force]] says what happe
         }),
         ui.Callout({
           kind: "warn", title: "A market order with no limit can go very wrong",
-          body: `A market order keeps trading at worse and worse prices until it is filled or the book runs out. In the 18 Oct 2026 Phoenix snapshot, the bids drop from $103.75 straight to about $89, and far up the ask side sit [[junk-quote|junk orders]] at $9,999,999,999. So real takers almost always attach a worst acceptable price, called [[price-protection|price protection]]. The engine's \`market_order\` takes an optional limit for exactly this; [chapter 11](#/learn/11) tells the full story.`,
+          body: `A market order keeps trading at worse and worse prices until it is filled or the book runs out, and real books have gaps and absurd [[junk-quote|junk orders]] (on this Phoenix book, asks at $9,999,999,999, much further up than the ladder shows). So real takers attach a worst acceptable price, called [[price-protection|price protection]]. [Chapter 11](#/learn/11) tells the full story.`,
         }));
 
       // ---------------- See
@@ -462,10 +466,10 @@ One more choice: a limit order's [[time-in-force|time in force]] says what happe
       {
         q: "Why can't a working order book show a bid resting at **$104.40** while an ask rests at **$104.35**?",
         options: [
-          { text: "Exchanges don't allow bids above a certain price", why: "You may bid any price you like. The point is what happens when your bid is at or above someone's ask." },
-          { text: "Whichever of the two arrived second would have traded with the other at once, so they can't both be resting", why: "Right. An order that crosses the spread trades immediately as a taker. Only what can't trade rests, so the best bid always stays below the best ask." },
+          { text: "Exchanges don't allow bids above a certain price level", why: "You may bid any price you like. The point is what happens when your bid is at or above someone's ask." },
+          { text: "Whichever arrived second would have traded with the other at once", why: "Right. An order that crosses the spread trades immediately as a taker. Only what can't trade rests, so the best bid always stays below the best ask." },
           { text: "It can happen; buyers sometimes offer more than sellers ask", why: "They can send such an order, but it doesn't rest: it trades straight away. A book showing both would be crossed, which a correct engine never allows." },
-          { text: "Because both orders would be takers", why: "The one that arrived first was resting, so it would be the maker. The second would be the taker, and they would trade." },
+          { text: "Because both orders would be takers and neither a maker", why: "The one that arrived first was resting, so it would be the maker. The second would be the taker, and they would trade." },
         ],
         answer: 1,
       },

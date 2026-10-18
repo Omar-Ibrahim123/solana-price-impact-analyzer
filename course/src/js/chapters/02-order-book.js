@@ -98,6 +98,7 @@
     const { ui, data } = ctx;
     const wrap = h("div", { class: "stack" });
     let venueName = data.venue("phoenix") ? "phoenix" : data.venues()[0];
+    const solved = new Set(); // venues whose spread in bps the reader has worked out
 
     const pickerBox = h("div");
     const source = h("p", { class: "fine" });
@@ -128,12 +129,13 @@
       stats.bid.api.set("$" + fmt.price(bb, digits), "highest buyer");
       stats.ask.api.set("$" + fmt.price(ba, digits), "lowest seller");
       stats.spread.api.set("$" + fmt.price(spr, digits), "ask − bid");
-      stats.bps.api.set(fmt.bps(bps), "spread ÷ mid × 10,000");
+      if (solved.has(venueName)) stats.bps.api.set(fmt.bps(bps), "spread ÷ mid × 10,000");
+      else stats.bps.api.set("?", "work it out below");
       stats.mid.api.set("$" + fmt.price(mid, Math.max(digits, 3)), "(bid + ask) ÷ 2");
 
       const when = v.fetchedAt ? fmt.date(v.fetchedAt) : "unknown time";
       const slot = v.meta && v.meta.slot ? ` · Solana slot ${fmt.int(v.meta.slot)}` : "";
-      const orders = aggregated ? " · levels aggregated by price" : ` · ${fmt.int(snap.bids.length)} bid and ${fmt.int(snap.asks.length)} ask orders`;
+      const orders = aggregated ? " · levels aggregated by price (one total per price)" : ` · ${fmt.int(snap.bids.length)} bid and ${fmt.int(snap.asks.length)} ask orders`;
       source.textContent = `${data.active().source === "builtin" ? "Real snapshot" : "Your data"}: ${v.label} ${v.symbol}, fetched ${when}${slot}${orders}.`;
 
       OBZ.util.clear(ladderBox).appendChild(ui.Ladder({
@@ -149,11 +151,12 @@
         unit: "bps",
         explain: `(${fmt.price(ba, digits)} − ${fmt.price(bb, digits)}) ÷ ${fmt.price(mid, Math.max(digits, 3))} × 10,000 = **${bps.toFixed(2)} bps**.`,
         hint: "Spread = best ask − best bid. Divide it by the mid price, then multiply by 10,000.",
+        onCorrect: () => { solved.add(venueName); stats.bps.api.set(fmt.bps(bps), "spread ÷ mid × 10,000"); },
       }));
 
       OBZ.util.clear(depthBox).appendChild(ui.Figure({
         children: ui.DepthChart({ levels: book, band: 0.01, unit: "sol", height: 190, alt: `Depth chart for ${v.label}: cumulative SOL on each side within 1% of the mid.` }),
-        caption: `The same ${v.label} book as a [[depth-chart|depth chart]]: starting at the mid, the green area adds up every bid and the red area every ask, within 1% of the price. A wall that rises fast means lots of [[liquidity]] close to the mid.`,
+        caption: `The same ${v.label} book drawn another way, as a [[depth-chart|depth chart]]. Left to right is price; the height is how much SOL you have added up so far, starting at the mid: the green area adds up every bid going down in price and the red area every ask going up, within 1% of the price. A wall that rises fast means lots of [[liquidity]] close to the mid.`,
       }));
     }
 
@@ -260,12 +263,12 @@ Buyers and sellers disagreed by less than a hundredth of a percent.`,
       const tryEl = ctx.section("try", "Read a real book");
       tryEl.append(ui.TryIt({
         title: "Three venues, one minute",
-        intro: "These are real SOL order books, captured within half a second of each other: [[phoenix|Phoenix]] runs on the Solana blockchain, while [[kraken|Kraken]] and [[coinbase|Coinbase]] are companies. Switch venues and compare their top of book.",
+        intro: `These are real SOL order books, captured within half a second of each other: [[phoenix|Phoenix]] runs on the [[solana|Solana]] [[blockchain]] and trades SOL against [[usdc|USDC]] (a digital dollar), while [[kraken|Kraken]] and [[coinbase|Coinbase]] are companies trading SOL against US dollars. Switch venues and compare their [[top-of-book|top of book]] (the best bid and best ask). Two words in the source line: a Solana [[slot]] is the blockchain's unit of time, about 400 ms, so its number pins the Phoenix snapshot to a moment; and Kraken and Coinbase publish their books *aggregated by price*: one total per price, not each order.`,
         children: buildTry(ctx),
       }),
       ui.Callout({
         kind: "real", title: "Why is Phoenix's spread so much wider?",
-        body: `In this snapshot Kraken's spread is about **1 bps** and Phoenix's is about **58 bps**, nearly 60 times wider. Kraken and Coinbase have many professional [[market-maker|market makers]] quoting tight prices all day. On this Phoenix book the best orders simply sat further apart, and further down its bids there are orders at prices far from the market. Chapter 11 tells the story of those [[junk-quote|junk quotes]], and chapter 10 visits the [[prop-amm|prop AMMs]] where much of Solana's SOL trading now happens.`,
+        body: `In this snapshot Kraken's spread is about **1 bps** and Phoenix's is about **58 bps**, nearly 60 times wider. Kraken and Coinbase have many professional [[market-maker|market makers]] quoting tight prices all day. On this Phoenix book the best orders simply sat further apart, and further down its bids there are orders at prices far from the market. Scroll the Phoenix ladder and you will see the best bid at $103.75 and the next one down at about $89. Yes, really: real books have gaps. Chapter 11 tells the story of those [[junk-quote|junk quotes]], and chapter 10 visits the [[prop-amm|prop AMMs]] where much of Solana's SOL trading now happens.`,
       }));
     },
 

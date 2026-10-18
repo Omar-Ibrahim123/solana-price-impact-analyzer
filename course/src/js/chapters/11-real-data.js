@@ -60,7 +60,7 @@
   }
 
   /** The 04:31 Phoenix snapshot without the orders at its best bid (what the collector's first
-   *  tick showed at the top of the book: best bid $89.036, best ask $104.35). */
+   *  round showed at the top of the book: best bid $89.036, best ask $104.35). */
   function withoutBestBid(snap) {
     const bb = snap.bestBid();
     return new OBZ.engine.Snapshot({ venue: snap.venue, symbol: snap.symbol, fetchedAt: snap.fetchedAt, units: snap.units,
@@ -101,7 +101,7 @@
     return [t0, t1];
   }
 
-  /** [[t, value]] with a null inserted where ticks are missing, so the line breaks at gaps. */
+  /** [[t, value]] with a null inserted where rounds are missing, so the line breaks at gaps. */
   function withGaps(t, values, interval) {
     const pts = [];
     for (let i = 0; i < t.length; i++) {
@@ -128,7 +128,7 @@
       series, height: 250, table: true,
       x: { label: "Time (UTC)", format: hhmm, ticks: timeTicks(t0, t1), min: t0, max: t1 },
       y: { log: true, label: "Spread (bps, log scale)", format: (v) => (v >= 1 ? fmt.int(v) : fmt.num(v, 2)) },
-      alt: "Spread in basis points every collector tick for Phoenix, Kraken and Coinbase, on a log scale.",
+      alt: "Spread in basis points at every collector round for Phoenix, Kraken and Coinbase, on a log scale.",
     });
   }
 
@@ -161,7 +161,7 @@
     if (!ts || !ts.t || !ts.t.length) return out;
     const S = ts.series || {}, n = ts.t.length;
     const hours = (ts.t[n - 1] - ts.t[0]) / 3600;
-    const span = `${n} ticks, ${hhmm(ts.t[0])}–${hhmm(ts.t[n - 1])} UTC`;
+    const span = `${n} rounds, ${hhmm(ts.t[0])}–${hhmm(ts.t[n - 1])} UTC`;
     const spreads = ["phoenix", "kraken", "coinbase"].filter((k) => S[k] && S[k].spread_bps)
       .map((k) => `${OBZ.data.label(k)} ${bpsTxt(median(S[k].spread_bps))}`);
     if (spreads.length) out.push({ title: "Median spread", text: `${spreads.join(" · ")} (${span}).` });
@@ -180,22 +180,26 @@
       out.push({ title: "Half round trip at $100K", text: at(100000) + "." });
     }
 
-    const best = (ds.jupiter || []).filter((q) => q.dex === "best" && q.ok !== false && Array.isArray(q.route));
-    const pools = Array.from(new Set(best.flatMap((q) => q.route)));
-    if (pools.length) out.push({ title: "Pools in Jupiter's best routes (latest tick)", text: pools.join(", ") + "." });
+    const A = OBZ.lessons && OBZ.lessons.amm;
+    const best = (ds.jupiter || []).filter((q) => q.dex === "best" && q.ok !== false && Array.isArray(q.route) && q.route.length);
+    if (best.length && A) {
+      const legs = best.slice().sort((a, b) => a.usd - b.usd || (a.side < b.side ? -1 : 1)).map((q) => `${q.side} ${fmt.usdCompact(q.usd)}: ${A.routeText(q.route)}`);
+      out.push({ title: "Jupiter's best routes (latest round), legs in order", text: legs.join(" · ") + ". A leg can hand an in-between token to the next leg, so these names are venues the route passed through, not SOL liquidity each one held." });
+    }
 
     const solfi = S["jupiter:SolFi"] && S["jupiter:SolFi"].cost_bps_vs_ref;
     if (solfi && solfi.buy) {
       const sizes = [1000, 10000, 100000, 1000000];
       const parts = sizes.map((usd) => `${fmt.usdCompact(usd)}: ${count(solfi.buy[String(usd)])}/${n}`);
       const never = sizes.filter((usd) => count(solfi.buy[String(usd)]) === 0).map(fmt.usdCompact);
-      out.push({ title: "Ticks with a SolFi buy route", text: parts.join(" · ") + "." + (never.length ? ` At ${never.join(" and ")} Jupiter never found a route through SolFi in this data.` : "") });
+      out.push({ title: "Rounds with a SolFi buy route", text: parts.join(" · ") + "." + (never.length ? ` At ${never.join(" and ")} Jupiter never found a route through SolFi in this data.` : "") });
     }
 
     const ev = S.phoenix && S.phoenix.events;
     if (ev && count(ev)) {
       const total = ev.reduce((a, x) => a + (x || 0), 0);
-      out.push({ title: "Phoenix activity", text: `the market's sequence number (it goes up with every instruction that changes the book) moved ${fmt.int(total)} time${total === 1 ? "" : "s"} in ${fmt.num(hours, 1)} hours${total ? `, about once every ${fmt.int(hours * 60 / total)} minutes` : ""}.` });
+      const idle = total < hours; // fewer than one change an hour
+      out.push({ title: "Phoenix activity", text: `the market's sequence number (it goes up with every instruction that changes the book) moved ${fmt.int(total)} time${total === 1 ? "" : "s"} in ${fmt.num(hours, 1)} hours${total ? `, about once every ${fmt.int(hours * 60 / total)} minutes` : ""}.${idle ? " In this data the Phoenix Legacy SOL/USDC market was nearly idle. That is a finding, not a bug in the collector: much of Solana's SOL/USDC trading now happens elsewhere, for example through prop AMMs." : ""}` });
     }
 
     const ours = S.phoenix && S.phoenix.cost_bps_vs_ref && S.phoenix.cost_bps_vs_ref.buy && S.phoenix.cost_bps_vs_ref.buy["1000"];
@@ -229,7 +233,7 @@
       wrap.appendChild(ui.Figure({
         label: "Figure 11.1",
         children: spreadChart(ts),
-        caption: `Spread at every collector tick, one tick every ${Math.round(interval / 60)} minutes, on a log scale so 1 bps and 1,000 bps both fit.${missing ? ` ${missing} tick${missing === 1 ? " is" : "s are"} missing from the series; the lines break there instead of joining across the gap.` : ""}`,
+        caption: `Spread at every collector round, one round every ${Math.round(interval / 60)} minutes, on a log scale so 1 bps and 1,000 bps both fit.${missing ? ` ${missing} round${missing === 1 ? " is" : "s are"} missing from the series; the lines break there instead of joining across the gap.` : ""}`,
         alt: "Spread over time on a log scale. Median spreads: " + ["phoenix", "kraken", "coinbase"].filter((k) => ts.series[k] && ts.series[k].spread_bps).map((k) => `${OBZ.data.label(k)} ${bpsTxt(median(ts.series[k].spread_bps))} (lowest ${bpsTxt(Math.min(...ts.series[k].spread_bps.filter((x) => x !== null)))}, highest ${bpsTxt(Math.max(...ts.series[k].spread_bps.filter((x) => x !== null)))})`).join("; ") + ".",
       }));
 
@@ -248,7 +252,7 @@
       wrap.appendChild(ui.Figure({
         label: "Figure 11.2",
         children: h("div", { class: "stack" }, h("div", { class: "btn-row" }, viewSeg, metricSeg), chartBox, note),
-        caption: "Median cost of a trade by size, across every tick. **[[half-round-trip|Half round trip]]** = buy $X and sell $X back to back, then take half the gap between the two average prices: it is the cost of one trip, and it barely moves if the price drifts while the quotes are taken. **Buy cost vs reference mid** compares a buy's average price with the Kraken–Coinbase reference. A line that stops means no fill or no route at the next size. Fees are not included for the books; Jupiter's quotes include the pools' own fees.",
+        caption: "Median cost of a trade by size, across every round. **[[half-round-trip|Half round trip]]** = buy $X and sell $X back to back, then take half the gap between the two average prices: it is the cost of one trip, and it barely depends on the reference mid or on slow drift while the quotes are taken. **Buy cost vs reference mid** compares a buy's average price with the Kraken–Coinbase reference. A line that stops means no fill or no route at the next size. Fees are not included for the books; Jupiter's quotes include the pools' own fees.",
         alt: "Median cost in basis points against trade size, both on log scales, for the selected routes. The exact values for every line are in the table under the chart.",
       }));
 
@@ -372,17 +376,18 @@
       const snap = data.snapshot("phoenix");
       const ref = refMid(data);
       const ph = data.phoenix();
-      let worked = null, protectedRun = null, bb = null, afterMid = null, afterSpread = null;
+      let worked = null, protectedRun = null, bb = null, afterMid = null, afterSpread = null, nextBid = null;
       try {
         if (snap && ref) {
           worked = runOrder(snap, "buy", 1e6, "off", ref);
           protectedRun = runOrder(snap, "buy", 1e6, "ref", ref);
           bb = bestBidInfo(snap);
-          const g = withoutBestBid(snap); afterMid = g.midPrice(); afterSpread = g.spreadBps();
+          const g = withoutBestBid(snap); afterMid = g.midPrice(); afterSpread = g.spreadBps(); nextBid = g.bestBid() === null ? null : g.price(g.bestBid());
         }
       } catch (e) { worked = null; }
       const kr = data.venue("kraken"), cb = data.venue("coinbase");
       const ts = data.active().timeseries;
+      const ref0 = ts && Array.isArray(ts.ref_mid) ? ts.ref_mid.find((x) => typeof x === "number") : null;
       const rt10 = (k) => (ts && ts.series && ts.series[k] && ts.series[k].round_trip_bps ? median(ts.series[k].round_trip_bps["10000"]) : null);
 
       // ---------------- Explain
@@ -401,20 +406,20 @@ The Phoenix SOL/USDC book from 18 Oct 2026, 04:31 UTC held ${ph ? fmt.int(ph.n_b
         ui.prose(`
 Real traders never send that order. They send a limit: "buy, but not above this price". So every order the project simulates carries [[price-protection|price protection]]: it trades at most 10% away from the market and stops there. If the book can't supply the full amount inside the band, the result says "partial fill: only this much traded", rather than averaging in junk.
 
-But 10% away from *which* price? The obvious answer, the venue's own [[mid-price|mid]], broke within an hour. At 04:31 Phoenix's best bid was ${bb ? `$${fmt.price(bb.price, 2)} for ${fmt.sol(bb.sol)} SOL` : "$103.75 for 50 SOL"}. When the collector looked again, that bid was gone, and the next bid down was at $89.04. One missing order moved Phoenix's own mid to ${afterMid ? `$${fmt.price(afterMid, 2)}` : "about $96.69"} and its [[spread]] to ${afterSpread ? fmt.int(afterSpread) : "about 1,584"} bps, while Kraken and Coinbase still said SOL was worth about $103.6. A band centred on that broken mid let a "protected" sell trade at $89, 14% below the market.
+But 10% away from *which* price? The obvious answer, the venue's own [[mid-price|mid]], broke within an hour. At 04:31 Phoenix's best bid was ${bb ? `$${fmt.price(bb.price, 2)} for ${fmt.sol(bb.sol)} SOL` : "$103.75 for 50 SOL"}. When the collector looked again, that bid was gone, and the next bid down was at ${nextBid ? `$${fmt.price(nextBid, 2)}` : "about $89"}. One missing order moved Phoenix's own mid to ${afterMid ? `$${fmt.price(afterMid, 2)}` : "about $96.69"} and its [[spread]] to ${afterSpread ? fmt.int(afterSpread) : "about 1,584"} bps, while Kraken and Coinbase ${ref0 ? `said SOL was worth about $${fmt.price(ref0, 2)}` : "still put SOL near $104"}. A band centred on that broken mid let a "protected" sell trade at ${nextBid ? `$${fmt.price(nextBid, 2)}` : "about $89"}${nextBid && ref0 ? `, ${fmt.int((ref0 - nextBid) / ref0 * 100)}% below the market` : ", far below the market"}.
 
 So version 2 centres the band on a [[reference-mid|reference mid]]: the average of the Kraken and Coinbase mids at the same moment. Costs are measured against it too, which is also the only fair way to compare a book with an [[amm|AMM]] route, since a pool has no mid of its own.`),
         ui.prose(`
 One more rule: [[fee|fees]] are always shown separately, never mixed in. A beginner on Kraken pays a ${kr && isFinite(kr.feeBps) ? kr.feeBps : 40} bps [[taker-fee|taker fee]], and on Coinbase ${cb && isFinite(cb.feeBps) ? cb.feeBps : 120} bps, at the lowest volume tier. Their trading cost for a $10K order was ${rt10("kraken") !== null ? `about ${fmt.num(rt10("kraken"), 1)} and ${fmt.num(rt10("coinbase"), 1)} bps` : "about 1 bps"}. For a small trader the fee is the cost; the book barely matters. Big traders pay much lower fees, which is why the project reports impact, fee and [[all-in-cost|all-in cost]] side by side.`),
         ui.Callout({
           kind: "project", title: "In this project",
-          body: "`impact.py` takes the band (`max_slippage`, default 10%) and an optional `anchor`. `metrics.py` simulates every order twice, with the band on the tick's reference mid (the headline numbers) and on the venue's own mid (kept as a secondary column), and bumps `METRICS_VERSION` whenever a formula changes meaning so old cached numbers are never mixed with new ones.",
+          body: "`impact.py` takes the band (`max_slippage`, default 10%) and an optional `anchor`. `metrics.py` simulates every order twice, with the band on the round's reference mid (the headline numbers) and on the venue's own mid (kept as a secondary column), and bumps `METRICS_VERSION` whenever a formula changes meaning so old cached numbers are never mixed with new ones.",
         }));
 
       // ---------------- See
       const see = ctx.section("see", "What the collector saw");
       see.append(
-        ui.p("Every five minutes the [[collector]] fetched all three books at the same moment, plus real [[jupiter|Jupiter]] quotes through each AMM route. These charts read that [[time-series|time series]]. Hover or touch to read values, or open the table under each chart. Figures are [[median|medians]] across ticks, so one odd tick can't drag them."),
+        ui.p("Every five minutes the [[collector]] fetched all three books at the same moment, plus real [[jupiter|Jupiter]] quotes through each AMM route. Each of those 5-minute measurements is a **snapshot round**. (The project's code calls a round a *tick*, but in this course a tick is only the price step.) These charts read that [[time-series|time series]]. Hover or touch to read values, or open the table under each chart. Figures are [[median|medians]] across rounds, so one odd round can't drag them."),
         buildSee(ctx));
 
       // ---------------- Try
@@ -427,12 +432,13 @@ One more rule: [[fee|fees]] are always shown separately, never mixed in. A begin
         }),
         ui.Callout({
           kind: "warn", title: "What this data can't tell you",
-          body: `Say these before an interviewer has to ask:
+          body: `Any honest reading of this data starts with its limits:
 
 - **Quotes aren't trades.** A snapshot shows what *could* have traded at that instant. A real order would meet makers who requote, and other takers.
-- **Exchange books are aggregated.** Kraken returns at most 500 price levels and Coinbase's level-2 book is summed by price; the collector keeps them within 25% of the mid. Very large orders can run out of what the API shows.
+- **Exchange books are aggregated.** Kraken's API returns up to 500 price levels per side (the course's teaching snapshot keeps 400) and Coinbase publishes a level-2 book (one total per price, not each order); the collector keeps them within 25% of the mid. Very large orders can run out of what the API shows.
 - **Fees are base tier.** Kraken's 40 bps and Coinbase's 120 bps are what a new account pays; large traders pay far less. Jupiter's quotes already include the pools' fees.
-- **One day, one market.** ${ts && ts.t && ts.t.length ? `This export has ${ts.t.length} ticks (${fmt.num((ts.t[ts.t.length - 1] - ts.t[0]) / 3600, 1)} hours).` : "The run covers 24 hours."} Five-minute snapshots miss everything in between, and Phoenix Legacy SOL/USDC is one spot market, not Phoenix's newer perpetuals.`,
+- **Solana's own fees aren't counted.** On-chain routes also pay a transaction fee and, often, a priority fee. At these trade sizes they are small, but they are not in these numbers.
+- **One day at most, one market.** The collector was built to run for 24 hours, with a snapshot every 5 minutes. ${ts && ts.t && ts.t.length > 1 ? `This export holds ${ts.t.length} snapshot rounds covering ${fmt.num((ts.t[ts.t.length - 1] - ts.t[0]) / 3600, 1)} hours.` : ""} Five-minute snapshots miss everything in between. And Phoenix Legacy SOL/USDC (Phoenix's original spot market, where SOL itself changes hands) is one market, not Phoenix Perpetuals (contracts that follow SOL's price without anyone handing over SOL).`,
         }));
     },
 
@@ -441,18 +447,19 @@ One more rule: [[fee|fees]] are always shown separately, never mixed in. A begin
         q: "A simulated $1M buy on the real Phoenix book, with no limit, reports an average price of about **$692 per SOL** when SOL traded near $104. What went wrong?",
         options: [
           { text: "The engine has a bug: average prices can never be that high", why: "The engine is right: it filled exactly the orders in the book, best price first. The problem is the book itself. After the real asks ran out, the order kept buying junk asks priced up to $9,999,999,999." },
-          { text: "The order ran past the real liquidity into junk quotes, because nothing told it to stop", why: "Right. A market order with no limit walks the book until it is full, whatever the price. Price protection (a limit 10% from the market) makes it stop and report a partial fill instead." },
-          { text: "Phoenix charges a large fee on big orders", why: "Phoenix's taker fee in this snapshot is 2 bps, and fees are reported separately anyway. The huge price comes from the orders the market buy filled against." },
-          { text: "SOL's price jumped while the order was filling", why: "A simulation on one snapshot is instant: the book doesn't change while it fills. The extreme average comes from junk asks deep in that same book." },
+          { text: "It ran past the real orders into junk quotes, because nothing stopped it", why: "Right. A market order with no limit walks the book until it is full, whatever the price. Price protection (a limit 10% from the market) makes it stop and report a partial fill instead." },
+          { text: "Phoenix charges a very large fee on big orders", why: "Phoenix's taker fee in this snapshot is 2 bps, and fees are reported separately anyway. The huge price comes from the orders the market buy filled against." },
+          { text: "SOL's price jumped while the big order was filling", why: "A simulation on one snapshot is instant: the book doesn't change while it fills. The extreme average comes from junk asks deep in that same book." },
         ],
         answer: 1,
       },
       {
-        q: "Phoenix's best bid vanishes, so its own mid drops to about **$96.7** while Kraken and Coinbase both say SOL is worth about **$103.6**. Why does the project centre the 10% protection band on the Kraken–Coinbase mid instead of Phoenix's own mid?",
+        q: "Phoenix's best bid vanishes, so its own mid drops to about **$96.7** while Kraken and Coinbase both say SOL is worth about **$104**. Why does the project centre the 10% protection band on the Kraken–Coinbase mid instead of Phoenix's own mid?",
         options: [
-          { text: "Because Kraken and Coinbase are always cheaper to trade on", why: "The reference mid isn't about which venue is cheaper. It is a yardstick for what the price *is*, so the band sits around the real market." },
-          { text: "Because a band around a broken mid lets a 'protected' sell trade far below the market", why: "Right. 10% below $96.7 is about $87, so a sell could fill at $89, about 14% under the real price. Around the reference mid the band stops at about $93, so the order honestly reports that nothing could trade." },
-          { text: "Because Phoenix's own mid can't be computed when the spread is wide", why: "It can: (best bid + best ask) ÷ 2 works for any spread. The trouble is that the result no longer describes the market." },
+          { text: "Kraken and Coinbase are always cheaper places to trade", why: "The reference mid isn't about which venue is cheaper. It is a yardstick for what the price *is*, so the band sits around the real market." },
+          { text: "A band around a broken mid lets a 'protected' sell fill far below the market", why: "Right. 10% below $96.7 is about $87, so a sell could fill at $89, about 14% under the real price. Around the reference mid the band stops at about $93, so the order honestly reports that nothing could trade." },
+          { text: "Phoenix's own mid can't be computed when the spread is wide", why: "It can: (best bid + best ask) ÷ 2 works for any spread. The trouble is that the result no longer describes the market." },
+          { text: "The Kraken–Coinbase mid changes less often than Phoenix's", why: "How often a mid changes isn't the point. The band should sit around the real market price, and one vanished bid had moved Phoenix's mid far away from it." },
         ],
         answer: 1,
       },

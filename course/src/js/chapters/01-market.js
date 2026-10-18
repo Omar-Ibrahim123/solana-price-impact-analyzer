@@ -259,15 +259,24 @@
       const ex = ctx.section("explain", "A price is where two opinions meet");
       ex.append(
         ui.prose(`
-A [[market]] is any place where [[buyer|buyers]] and [[seller|sellers]] meet to [[trade]]: a farmers' market, a website that resells concert tickets, a stock [[exchange]]. In this course the thing being traded is [[sol|SOL]], the currency of the Solana blockchain, paid for in US dollars. But start smaller.
+A [[market]] is any place where [[buyer|buyers]] and [[seller|sellers]] meet to [[trade]]: a farmers' market, a website that resells concert tickets, a stock [[exchange]]. In this course the thing being traded is [[sol|SOL]], the coin of [[solana|Solana]], paid for in US dollars or in a digital dollar called [[usdc|USDC]]. (The box below says what those are.) But start smaller.
 
 You have a spare ticket for Saturday's concert. Before you talk to anyone, you know the lowest price you would accept, say $60; for less, you would rather go yourself. Your friend Sam knows the most he would pay, say $90. Each of you has a [[reservation-price|walk-away price]].`),
+        ui.Callout({
+          kind: "note", title: "SOL, Solana and USDC in 30 seconds",
+          body: `- **SOL** is Solana's own coin. Like any coin, its price in dollars is whatever people trade it at.
+- **USDC** is a [[token]] built to be worth exactly $1: a digital dollar. So "SOL/USDC" means SOL priced in USDC, which is almost the same as SOL in US dollars ("SOL/USD").
+- **Solana** is a [[blockchain]]: a shared computer that many independent machines run together, with no single company in charge. [[phoenix|Phoenix]], one of the exchanges in this course, runs on it, which makes it [[on-chain|on-chain]].
+- **Kraken and Coinbase** are companies that run their exchanges on their own computers ([[off-chain]]). There SOL is priced in US dollars.
+
+[Chapter 7](#/learn/7) and [chapter 8](#/learn/8) explain how a blockchain works. Until then, "on-chain" just means "run by that shared computer".`,
+        }),
         ui.prose(`
 Any price between $60 and $90 leaves you both better off. At $75 you get $15 more than you needed, and Sam pays $15 less than he was ready to. That is why trades happen at all: the ticket is worth more to Sam than to you, so moving it from you to him helps you both.
 
 If Sam would only pay $50, no price is both at least $60 and at most $50, so there is no trade. And if everyone valued the ticket at exactly the same amount, nobody would gain anything by trading. A [[price]] only appears when people value the same thing differently, and someone values it more than its owner does.`),
         ui.prose(`
-People rarely reveal their walk-away price. Instead they make offers. An offer to buy is a [[bid]] ("I'll pay $70"). An offer to sell is an [[ask]] ("I want $80"). A bid is usually below what the buyer would really pay, and an ask above what the seller would really take, because everyone hopes for a better deal. While the highest bid is below the lowest ask, nothing trades; someone has to give in.
+People rarely reveal their walk-away price. Instead they make offers. An offer to buy is a [[bid]] ("I'll pay $70"). An offer to sell is an [[ask]] ("I want $80"). A bid is usually below what the buyer would really pay, and an ask above what the seller would really take, because everyone hopes for a better deal. While the highest bid is below the lowest ask, nothing trades; someone has to give in. To buy right now, you accept the lowest ask; to sell right now, you accept the highest bid.
 
 Big markets work the same way, with thousands of people. At 04:31 UTC on 18 October 2026 the highest bid for one SOL on [[kraken|Kraken]] was **$103.94** and the lowest ask was **$103.95**. Buyers and sellers disagreed by one cent, and a trade happened each time someone accepted the other side's price.`),
         ui.prose(`
@@ -293,7 +302,7 @@ With two people you can just talk. With thousands you need rules: who trades wit
       const tr = ctx.section("try", "Run a ticket market");
       tr.append(ui.TryIt({
         title: "Six people, three tickets",
-        intro: "An example market (not real data): three fans each want one ticket, and three fans each have one to sell. Drag the sliders (or use the arrow keys) to change what each person will pay or accept, and watch which trades become possible and the range of prices that works for everyone. Then try the three tasks at the bottom.",
+        intro: "An example market (not real data): three fans each want one ticket, and three fans each have one to sell. Drag the sliders (or use the arrow keys) to change what each person will pay or accept, and watch which trades become possible. The shaded band is the **clearing range**: the prices at which every trade that can happen does happen (economists say the market *clears* there). Then try the three tasks at the bottom.",
         children: buildTry(ctx),
       }),
       ui.Callout({
@@ -326,10 +335,10 @@ With two people you can just talk. With thousands you need rules: who trades wit
       {
         q: "Imagine everyone in a market, buyers and sellers alike, values a ticket at exactly **$75**. Why would hardly any trades happen?",
         options: [
-          { text: "Because $75 is too expensive", why: "The amount itself doesn't matter. The trouble is that buyers and sellers agree: at any price, one of them would be no better off." },
-          { text: "Because nobody gains from trading: a trade needs a buyer who values it more than its owner does", why: "Right. If a seller's minimum and a buyer's maximum are both $75, the only possible price is $75 and neither side gains. Trades come from differences in value." },
-          { text: "Because there is no exchange to match them", why: "An exchange helps people find each other, but even with one, nobody gains by trading something they value exactly as much as the money." },
-          { text: "Because the sellers would all ask $80", why: "Asking more than $75 would scare off every buyer here, since none would pay more than $75. The real reason is that everyone values the ticket the same." },
+          { text: "Because $75 is too expensive for most buyers", why: "The amount itself doesn't matter. The trouble is that buyers and sellers agree: at any price, one of them would be no better off." },
+          { text: "Nobody gains: a trade needs someone who values it more than its owner", why: "Right. If a seller's minimum and a buyer's maximum are both $75, the only possible price is $75 and neither side gains. Trades come from differences in value." },
+          { text: "Because there is no exchange to match them up", why: "An exchange helps people find each other, but even with one, nobody gains by trading something they value exactly as much as the money." },
+          { text: "Because the sellers would all ask $80 instead", why: "Asking more than $75 would scare off every buyer here, since none would pay more than $75. The real reason is that everyone values the ticket the same." },
         ],
         answer: 1,
       },
