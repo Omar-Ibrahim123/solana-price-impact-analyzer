@@ -85,6 +85,22 @@ lots conserved (`HYPOTHESIS_PROFILE=thorough pytest` for 5,000 sequences).
 fill losing its queue place, an empty level left behind, an off-by-one limit, an IOC that rests...)
 and checks that the tests catch every one: 8/8.
 
+**Event replay.** `python -m impact_analyzer replay --db data/collect.sqlite` re-decodes the raw
+Phoenix bytes of every tick. Each Phoenix order has a unique sequence number, so it diffs each pair
+of consecutive snapshots into adds, removals and size reductions, replays them through the engine
+starting from the earlier book, and checks the result equals the later snapshot exactly: same
+orders, same sizes, same queue order at every price. On the first 30 ticks of the 2026-10-18 run
+(05:05–07:35 UTC) all 29 pairs matched. The market was nearly idle: 3 new orders and 7 removals in
+2.5 hours. Every removed order belonged to a trader who placed a new order in the same 5 minutes,
+which looks like re-quoting (one trader pulled six asks near $104 and posted a single 500 SOL ask
+at $120), though the account can't prove they weren't fills. No size reductions, expiries or anomalies, and no resting order that
+appeared and vanished between ticks. What this does not prove: the events come from the snapshots
+themselves, so the check is partly circular. It can't see orders that come and go between ticks,
+it can't tell a fill from a cancel, and takers leave no trace (Phoenix only numbers orders that
+rest). What it does check is that the engine reproduces Phoenix's book and time priority from the
+previous book plus the changes (this re-checks the bid sequence-number fix), and that no
+impossible transitions occur.
+
 `python -m benchmarks.bench_engine --markdown` replays 1M random adds, cancels and market orders
 (seed 0) and times each call:
 
