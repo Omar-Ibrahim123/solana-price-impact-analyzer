@@ -116,6 +116,16 @@
       project: "Spread, price impact and fees are all reported in bps, so SOL at $104 and BTC at $100,000 can be compared directly.",
       related: ["percent", "spread", "price-impact"],
     },
+    "reservation-price": {
+      term: "Reservation price", aliases: ["walk-away price", "maximum price", "minimum price", "willingness to pay"], chapter: 1,
+      def: "The most a buyer would pay, or the least a seller would accept, before walking away. If your friend would pay at most $90 for your concert ticket, $90 is his reservation price. A trade is possible only when the buyer's is at or above the seller's.",
+      related: ["buyer", "seller", "bid", "ask"],
+    },
+    "price-discovery": {
+      term: "Price discovery", chapter: 1,
+      def: "How a market finds a price: buyers and sellers post bids and asks, trade, and adjust, until the price settles where they meet. Nobody announces the price; it is wherever the latest trades happen.",
+      related: ["price", "bid", "ask", "order-book"],
+    },
 
     // ---------------------------------------------------------------- 2. the order book
     "order-book": {
@@ -254,6 +264,17 @@
       def: "A trader, usually a firm running software, that keeps both bids and asks in the book all day. It earns the spread when others trade with it, and takes the risk of the price moving against it.",
       related: ["maker", "liquidity", "spread", "prop-amm"],
     },
+    "time-in-force": {
+      term: "Time in force", aliases: ["TIF"], chapter: 3,
+      def: "The part of a limit order that says what happens to whatever can't trade straight away: keep it waiting in the book (GTC) or cancel it at once (IOC).",
+      project: "orderbook.py's add_order takes tif=TimeInForce.GTC (the default) or TimeInForce.IOC.",
+      related: ["gtc", "ioc", "limit-order"],
+    },
+    gtc: {
+      term: "GTC (good-til-cancelled)", aliases: ["good-til-cancelled", "good-till-cancelled", "GTC"], chapter: 3,
+      def: "The usual kind of limit order: whatever doesn't trade at once rests in the book at your price until someone trades with it or you cancel it. The resting part makes you a maker.",
+      related: ["time-in-force", "ioc", "resting-order", "maker"],
+    },
 
     // ---------------------------------------------------------------- 4. priority
     "price-time-priority": {
@@ -282,6 +303,11 @@
       def: "The core of the matching engine: take the best opposite order, trade as much as possible, remove it if it is used up, and repeat until the incoming order is done or prices get too bad.",
       project: "OrderBook._match() in orderbook.py, shared by limit and market orders.",
       related: ["matching-engine", "walking-the-book", "fill"],
+    },
+    "pro-rata": {
+      term: "Pro-rata matching", aliases: ["pro rata"], chapter: 4,
+      def: "An alternative to time priority: an incoming order is shared among all the resting orders at a price in proportion to their size, so an order twice as big gets twice the fill no matter when it arrived. Some futures exchanges use it.",
+      related: ["price-time-priority", "fifo", "price-level"],
     },
 
     // ---------------------------------------------------------------- 5. impact
