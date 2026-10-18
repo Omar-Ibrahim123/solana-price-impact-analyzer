@@ -9,8 +9,9 @@
  *   - trades always print at the MAKER's (resting order's) price
  *   - a partial fill keeps its place at the head of the queue
  *   - cancelOrder of an unknown id returns false (a cancel can race a fill)
+ *   - addOrder(..., tif): TimeInForce.GTC (default) rests the unfilled part; IOC drops it
  *   - marketOrder(side, lots, limitPrice) never rests; limitPrice is optional
- *     price protection (immediate-or-cancel)
+ *     price protection (an IOC limit order without an id)
  *
  * The golden test (course/tests/golden.json, made by make_golden.py) replays ~2,000
  * operations through both engines and checks every fill matches.
@@ -23,6 +24,8 @@
 
   const BID = "bid"; // buy
   const ASK = "ask"; // sell
+  // What happens to the part of a limit order that can't trade at once (orderbook.py TimeInForce).
+  const TimeInForce = Object.freeze({ GTC: "gtc", IOC: "ioc" });
 
   function opposite(side) {
     if (side === BID) return ASK;
@@ -202,16 +205,19 @@
     }
 
     // ---- commands --------------------------------------------------------------
-    /** Submit a limit order; returns the fills it caused (possibly empty). */
-    addOrder(orderId, side, priceTicks, sizeLots) {
+    /** Submit a limit order; returns the fills it caused (possibly empty).
+     *  tif = TimeInForce.GTC rests the remainder; TimeInForce.IOC cancels it (never rests). */
+    addOrder(orderId, side, priceTicks, sizeLots, tif = TimeInForce.GTC) {
       checkSide(side); checkInt("priceTicks", priceTicks); checkInt("sizeLots", sizeLots);
+      if (tif !== TimeInForce.GTC && tif !== TimeInForce.IOC) throw new TypeError(`tif must be "gtc" or "ioc", got ${JSON.stringify(tif)}`);
       if (sizeLots <= 0) throw new RangeError(`size_lots must be positive, got ${sizeLots}`);
       if (this.orders.has(orderId)) throw new RangeError(`order_id ${orderId} is already resting`);
 
       const fills = this._match(side, sizeLots, priceTicks);
       let remaining = sizeLots;
       for (const f of fills) remaining -= f.sizeLots;
-      if (remaining > 0) {
+      // The only difference between GTC and IOC: whether the remainder rests.
+      if (remaining > 0 && tif === TimeInForce.GTC) {
         const book = this._book(side);
         let level = book.get(priceTicks);
         const fresh = level === undefined;
@@ -512,7 +518,7 @@
   }
 
   OBZ.engine = {
-    BID, ASK, opposite, Order, Fill, PriceLevel, SortedLevels, OrderBook, Units, Snapshot,
+    BID, ASK, TimeInForce, opposite, Order, Fill, PriceLevel, SortedLevels, OrderBook, Units, Snapshot,
     parseDecimal, pyFloorDiv, pySum, protectionLimit, protectionLimitTicks, lotsForNotional, simulate,
     impactCurve, logSpacedSizes, DEFAULT_MAX_SLIPPAGE, DEFAULT_SIZES_USD,
   };

@@ -85,6 +85,15 @@
       eq(b.cancelOrder(2), true); b.addOrder(4, ASK, 15000, 3); eq(b.marketOrder(BID, 7), [F(1, 15000, 4), F(3, 15000, 2), F(4, 15000, 1)]);
     });
     test("cancelling the last order removes the level", () => { const b = new OrderBook(); b.addOrder(1, ASK, 15000, 4); b.addOrder(2, ASK, 15010, 4); b.cancelOrder(1); eq(b.bestAsk(), 15010); ok(!b.asks.has(15000)); });
+    test("IOC limit order trades like a market order with that limit and never rests", () => {
+      const { TimeInForce } = OBZ.engine;
+      const mk = () => { const b = new OrderBook(); b.addOrder(1, ASK, 15000, 3); b.addOrder(2, ASK, 15010, 4); return b; };
+      const a = mk(), m = mk();
+      const fa = a.addOrder(9, BID, 15005, 10, TimeInForce.IOC), fm = m.marketOrder(BID, 10, 15005);
+      eq(fa.map((f) => [f.makerOrderId, f.priceTicks, f.sizeLots]), fm.map((f) => [f.makerOrderId, f.priceTicks, f.sizeLots]));
+      eq(a.bestBid(), null, "nothing rested"); eq(a.cancelOrder(9), false, "an IOC id is never stored");
+      const g = mk(); g.addOrder(9, BID, 15005, 10); eq(g.bestBid(), 15005, "GTC rests the remainder");
+    });
     test("cancel of an unknown id, or twice, returns false", () => { const b = new OrderBook(); eq(b.cancelOrder(999), false); b.addOrder(1, BID, 14990, 1); eq(b.cancelOrder(1), true); eq(b.cancelOrder(1), false); });
     test("cancel after a full fill returns false", () => { const b = new OrderBook(); b.addOrder(1, ASK, 15000, 4); b.marketOrder(BID, 4); eq(b.cancelOrder(1), false); });
     test("cancel after a partial fill removes the remaining size", () => { const b = new OrderBook(); b.addOrder(1, ASK, 15000, 10); b.addOrder(2, ASK, 15000, 5); b.marketOrder(BID, 4); b.cancelOrder(1); eq(b.depth(ASK), [[15000, 5]]); });
@@ -324,6 +333,25 @@
       });
     }
     test("play tools are registered", () => eq(OBZ.play.all().map((t) => t.id), ["playground", "real-books", "hex", "amm", "code"]));
+  });
+
+  /* ------------------------------------------------------------ exercises */
+  group("Exercises: every reference solution passes, every starter fails", () => {
+    const seen = new Set(), all = [];
+    const collect = (owner, list) => (list || []).forEach((ex) => { if (!seen.has(ex.id)) { seen.add(ex.id); all.push([owner, ex]); } });
+    for (const ch of OBZ.chapters.all()) collect(`chapter ${ch.number}`, ch.exercises);
+    for (const t of OBZ.play.all()) collect(t.id, t.exercises);
+    const run = (ex, code) => OBZ.ui.runCode({ code, prelude: ex.prelude, exports: ex.exports, tests: ex.tests, timeoutMs: ex.timeoutMs || 4000 });
+    for (const [owner, ex] of all) {
+      test(`${owner}: ${ex.id}`, async () => {
+        const good = await run(ex, ex.solution);
+        eq(good.type, "done", "solution runs");
+        eq(good.results.filter((r) => !r.ok).map((r) => r.name + ": " + r.msg), [], "solution fails no test");
+        const bad = await run(ex, ex.starter);
+        ok(bad.type !== "done" || bad.results.some((r) => !r.ok), "starter code must not pass every test");
+      });
+    }
+    test("the course has exercises", () => ok(all.length >= 8, `found ${all.length}`));
   });
 
   /* ------------------------------------------------------------ data */
