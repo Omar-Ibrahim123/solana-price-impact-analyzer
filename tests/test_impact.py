@@ -126,6 +126,17 @@ def test_sell_impact_is_positive_cost():
     assert r.impact_bps > 0
 
 
+def test_price_protection_ignores_junk_quotes():
+    s = tiny_book()
+    s.asks.append(RestingOrder(999_999_00, 1_000))  # 1,000 SOL offered at $999,999
+    r = simulate(s, "buy", 1_000_000)  # default: no fills beyond 10% from mid
+    assert not r.fully_filled
+    assert r.filled_base == 40
+    assert r.avg_price < 150 * 1.1
+    wide = simulate(s, "buy", 1_000_000, max_slippage=1e6)
+    assert wide.filled_base > 40
+
+
 def test_exhausted_book_reports_partial():
     r = simulate(tiny_book(), "sell", 1_000_000)
     assert not r.fully_filled

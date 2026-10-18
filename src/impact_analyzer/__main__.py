@@ -16,8 +16,14 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from .amm import equivalent_pool
-from .impact import ImpactResult, impact_curve, log_spaced_sizes
+from .amm import depth_within, equivalent_pool
+from .impact import (
+    DEFAULT_MAX_SLIPPAGE,
+    DEFAULT_SIZES_USD,
+    ImpactResult,
+    impact_curve,
+    log_spaced_sizes,
+)
 from .snapshot import BookSnapshot
 
 VENUES = ("phoenix", "kraken", "coinbase")
@@ -45,10 +51,11 @@ def cmd_fetch(args: argparse.Namespace) -> list[Path]:
         path = Path(args.data_dir) / f"{venue}-{stamp}.json"
         snap.save(path)
         paths.append(path)
+        bid2, ask2 = depth_within(snap, 0.02)
         print(
             f"  {venue:<9} mid ${snap.mid_price():,.4f}  spread {snap.spread_bps():.2f} bps  "
             f"{len(snap.bids)} bids / {len(snap.asks)} asks  "
-            f"depth ${snap.notional('bid'):,.0f} / ${snap.notional('ask'):,.0f}  -> {path}"
+            f"within 2%: ${bid2:,.0f} bid / ${ask2:,.0f} ask  -> {path}"
         )
     return paths
 
@@ -60,31 +67,36 @@ def latest_snapshots(data_dir: Path) -> list[Path]:
         venue = p.name.split("-")[0]
         if venue in VENUES:
             latest[venue] = p
-    return list(latest.values())
+    return [latest[v] for v in VENUES if v in latest]
 
 
 def fmt_bps(r: ImpactResult) -> str:
     if r.impact_bps is None:
         return "—"
-    return f"{r.impact_bps:.2f}" + ("" if r.fully_filled else "*")
+    if r.fully_filled:
+        return f"{r.impact_bps:.2f}"
+    return f"{r.impact_bps:.1f}* (${_short(r.filled_usd)})"  # partial: show what filled
 
 
-def print_table(table: dict[str, dict[str, list[ImpactResult]]]) -> None:
+def print_table(table: dict[str, dict[str, list[ImpactResult]]], max_slippage: float) -> None:
     sizes = [r.target_usd for r in next(iter(table.values()))["buy"]]
-    header = f"{'venue':<10}{'side':<6}" + "".join(f"{'$' + _short(s):>12}" for s in sizes)
+    header = f"{'venue':<10}{'side':<6}" + "".join(f"{'$' + _short(s):>16}" for s in sizes)
     print(header)
     print("-" * len(header))
     for venue, by_side in table.items():
         for side in ("buy", "sell"):
-            print(f"{venue:<10}{side:<6}" + "".join(f"{fmt_bps(r):>12}" for r in by_side[side]))
-    print("impact in bps vs. mid, includes half the spread.  * = book exhausted (partial fill)")
+            print(f"{venue:<10}{side:<6}" + "".join(f"{fmt_bps(r):>16}" for r in by_side[side]))
+    print("impact in bps vs. mid, including half the spread.")
+    print(
+        f"* = partial fill (amount filled in brackets): too little within {max_slippage:.0%} of mid"
+    )
 
 
 def _short(usd: float) -> str:
     for div, suffix in ((1e6, "M"), (1e3, "K")):
         if usd >= div:
-            return f"{usd / div:g}{suffix}"
-    return f"{usd:g}"
+            return f"{float(f'{usd / div:.3g}'):g}{suffix}"
+    return f"{usd:.0f}"
 
 
 def export_for_playground(
@@ -127,21 +139,30 @@ def export_for_playground(
     }
 
 
-def analyze(snaps: list[BookSnapshot], out_dir: Path, chart_path: Path, prefix: str) -> None:
+def analyze(
+    snaps: list[BookSnapshot],
+    out_dir: Path,
+    chart_path: Path,
+    prefix: str,
+    max_slippage: float = DEFAULT_MAX_SLIPPAGE,
+) -> None:
     if not snaps:
         sys.exit("no snapshots to analyze (run `python -m impact_analyzer fetch` first)")
-    table = {s.venue: {side: impact_curve(s, side) for side in ("buy", "sell")} for s in snaps}
+
+    def curve(s: BookSnapshot, side: str, sizes=DEFAULT_SIZES_USD) -> list[ImpactResult]:
+        return impact_curve(s, side, sizes, max_slippage)
+
+    table = {s.venue: {side: curve(s, side) for side in ("buy", "sell")} for s in snaps}
     print()
-    print_table(table)
+    print_table(table, max_slippage)
 
     # Smooth curves (8 sizes per decade) for the chart and playground.
     sizes = log_spaced_sizes(1_000, 1_000_000)
-    curves = {
-        s.venue: {side: impact_curve(s, side, sizes) for side in ("buy", "sell")} for s in snaps
-    }
+    curves = {s.venue: {side: curve(s, side, sizes) for side in ("buy", "sell")} for s in snaps}
 
-    # Benchmark AMM: as deep near the price as the first (on-chain) book.
-    amm = equivalent_pool(snaps[0]) if snaps[0].mid_price() else None
+    # Benchmark AMM: as deep near the price as the on-chain book (Phoenix if we have it).
+    base = next((s for s in snaps if s.venue == "phoenix"), snaps[0])
+    amm = equivalent_pool(base) if base.mid_price() else None
 
     out_dir.mkdir(parents=True, exist_ok=True)
     results_path = out_dir / f"{prefix}results.json"
@@ -165,7 +186,7 @@ def analyze(snaps: list[BookSnapshot], out_dir: Path, chart_path: Path, prefix: 
     if amm:
         print(
             f"AMM benchmark: x*y=k pool with ${amm.usd_reserve:,.0f} per side "
-            f"(as deep within 2% of mid as {snaps[0].venue})"
+            f"(as deep within 2% of mid as {base.venue})"
         )
     print(f"results     -> {results_path}")
     print(f"chart       -> {chart_path}")
@@ -191,23 +212,31 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--chart", default="docs/impact.png")
     p = sub.add_parser("demo")
     p.add_argument("--chart", default="data/demo-impact.png")
+    for p in sub.choices.values():
+        p.add_argument(
+            "--max-slippage",
+            type=float,
+            default=DEFAULT_MAX_SLIPPAGE * 100,
+            help="price protection: never trade more than this %% from mid (default 10)",
+        )
 
     args = parser.parse_args(argv)
     data_dir = Path(args.data_dir)
+    band = args.max_slippage / 100
 
     if args.command == "fetch":
         cmd_fetch(args)
     elif args.command == "run":
         paths = cmd_fetch(args)
-        analyze([BookSnapshot.load(p) for p in paths], data_dir, Path(args.chart), "")
+        analyze([BookSnapshot.load(p) for p in paths], data_dir, Path(args.chart), "", band)
     elif args.command == "analyze":
         paths = [Path(p) for p in args.snapshots] or latest_snapshots(data_dir)
-        analyze([BookSnapshot.load(p) for p in paths], data_dir, Path(args.chart), "")
+        analyze([BookSnapshot.load(p) for p in paths], data_dir, Path(args.chart), "", band)
     elif args.command == "demo":
         from .synthetic import demo_books
 
         print("Synthetic books (not real data):")
-        analyze(demo_books(), data_dir, Path(args.chart), "demo-")
+        analyze(demo_books(), data_dir, Path(args.chart), "demo-", band)
 
 
 if __name__ == "__main__":

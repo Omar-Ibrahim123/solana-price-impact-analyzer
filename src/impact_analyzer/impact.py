@@ -11,10 +11,17 @@ it is a *cost* in both directions:
     sell: impact_bps = (mid - avg_fill) / mid * 10_000
 
 It therefore includes the half-spread: even a tiny order pays it.
+
+Every order carries price protection: it will not trade more than
+``max_slippage`` (default 10%) away from mid. Without it, a large order on a
+thin book would "fill" against junk quotes (Phoenix's book has asks at
+$9,999,999,999 and bids at $0.001), and the average price would mean nothing.
+Sizes that cannot fill inside the band are reported as partial fills.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import asdict, dataclass
 
 from .convert import load_book
@@ -22,6 +29,7 @@ from .orderbook import Side
 from .snapshot import BookSnapshot
 
 DEFAULT_SIZES_USD = (1_000, 10_000, 100_000, 1_000_000)
+DEFAULT_MAX_SLIPPAGE = 0.10  # 10% from mid
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,18 +49,32 @@ class ImpactResult:
         return asdict(self)
 
 
-def lots_for_notional(snapshot: BookSnapshot, side: Side, target_usd: float) -> int:
+def protection_limit(snapshot: BookSnapshot, side: Side, mid: float, max_slippage: float) -> int:
+    """The worst price, in ticks, a taker on ``side`` accepts: ``mid * (1 +/- max_slippage)``."""
+    if side is Side.BID:
+        return math.floor(mid * (1 + max_slippage) / float(snapshot.tick_size))
+    return math.ceil(mid * (1 - max_slippage) / float(snapshot.tick_size))
+
+
+def lots_for_notional(
+    snapshot: BookSnapshot, side: Side, target_usd: float, limit_ticks: int | None = None
+) -> int:
     """How many lots a taker on ``side`` must trade to spend (or raise) ``target_usd``.
 
     Walks the opposite side's levels from the best price, accumulating USD until
     the target is reached. The last level is taken partially, rounded up to a
     whole lot so the order spends at least ``target_usd``. If the whole side is
-    worth less than the target, returns every lot on that side.
+    worth less than the target, returns every lot on that side. Levels beyond
+    ``limit_ticks`` are not counted.
     """
     levels = snapshot.asks if side is Side.BID else snapshot.bids
     remaining = target_usd
     lots = 0
     for o in levels:
+        if limit_ticks is not None and (
+            o.price_ticks > limit_ticks if side is Side.BID else o.price_ticks < limit_ticks
+        ):
+            break
         price = snapshot.price(o.price_ticks)
         level_usd = price * snapshot.size(o.size_lots)
         if level_usd >= remaining:
@@ -64,10 +86,16 @@ def lots_for_notional(snapshot: BookSnapshot, side: Side, target_usd: float) -> 
     return lots
 
 
-def simulate(snapshot: BookSnapshot, side: str, target_usd: float) -> ImpactResult:
+def simulate(
+    snapshot: BookSnapshot,
+    side: str,
+    target_usd: float,
+    max_slippage: float = DEFAULT_MAX_SLIPPAGE,
+) -> ImpactResult:
     """Simulate one market order of ``target_usd`` on ``snapshot``.
 
-    ``side`` is ``"buy"`` (lifts asks) or ``"sell"`` (hits bids).
+    ``side`` is ``"buy"`` (lifts asks) or ``"sell"`` (hits bids). The order
+    trades no further than ``max_slippage`` from mid.
     """
     if side not in ("buy", "sell"):
         raise ValueError(f"side must be 'buy' or 'sell', got {side!r}")
@@ -78,8 +106,9 @@ def simulate(snapshot: BookSnapshot, side: str, target_usd: float) -> ImpactResu
         raise ValueError(f"{snapshot.venue}: cannot measure impact on a one-sided book")
 
     taker = Side.BID if side == "buy" else Side.ASK
-    lots = lots_for_notional(snapshot, taker, target_usd)
-    fills = load_book(snapshot).market_order(taker, lots) if lots > 0 else []
+    limit = protection_limit(snapshot, taker, mid, max_slippage)
+    lots = lots_for_notional(snapshot, taker, target_usd, limit)
+    fills = load_book(snapshot).market_order(taker, lots, limit) if lots > 0 else []
 
     filled_lots = sum(f.size_lots for f in fills)
     filled_usd = sum(snapshot.price(f.price_ticks) * snapshot.size(f.size_lots) for f in fills)
@@ -108,9 +137,12 @@ def simulate(snapshot: BookSnapshot, side: str, target_usd: float) -> ImpactResu
 
 
 def impact_curve(
-    snapshot: BookSnapshot, side: str = "buy", sizes_usd=DEFAULT_SIZES_USD
+    snapshot: BookSnapshot,
+    side: str = "buy",
+    sizes_usd=DEFAULT_SIZES_USD,
+    max_slippage: float = DEFAULT_MAX_SLIPPAGE,
 ) -> list[ImpactResult]:
-    return [simulate(snapshot, side, s) for s in sizes_usd]
+    return [simulate(snapshot, side, s, max_slippage) for s in sizes_usd]
 
 
 def log_spaced_sizes(lo: float = 1_000, hi: float = 1_000_000, per_decade: int = 8) -> list[float]:

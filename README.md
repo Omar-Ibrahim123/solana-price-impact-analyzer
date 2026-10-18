@@ -7,9 +7,38 @@ Kraken and Coinbase, plus a constant-product AMM for reference.
 
 ## Findings
 
-> Fill this in after a live run (`python -m impact_analyzer run`): paste the table, embed
-> `docs/impact.png` with `![Impact vs. trade size](docs/impact.png)`, and write two or three
-> sentences on what the numbers say.
+Snapshot of SOL/USD(C) taken 2026-10-18 04:31 UTC (Solana slot 458,302,883). Impact is in basis
+points versus each venue's own mid, including half the spread; orders may trade at most 10% from
+mid.
+
+| Venue | Spread | Within 2% of mid (bid / ask) | $1K buy | $10K buy | $100K buy | $1M buy |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Phoenix (on-chain) | 57.7 bps | $5.2K / $47.1K | 28.8 | 32.4 | only $47K fills | only $47K fills |
+| Kraken | 1.0 bps | $5.7M / $5.8M | 0.9 | 1.4 | 3.5 | 10.2 |
+| Coinbase | 1.0 bps | $7.2M / $3.8M | 0.5 | 0.5 | 3.0 | 17.2 |
+
+Sells look similar on the exchanges (10.3 and 15.5 bps at $1M). On Phoenix only $5.2K of bids sit
+within 10% of mid, so a $10K sell already cannot complete.
+
+![Impact vs. trade size](docs/impact.png)
+
+What the numbers say:
+
+- **At this snapshot the Phoenix Legacy SOL/USDC book was thin.** Its spread was about 60 times
+  wider than Kraken's or Coinbase's, so even a $1K order paid ~29 bps, almost all of it half the
+  spread. The exchanges charged under 1 bp for the same order.
+- **Depth, not spread, decides large orders.** Kraken and Coinbase each held millions of dollars
+  within 2% of mid, so a $1M market buy cost only 10–17 bps. Phoenix ran out at $47K of buys.
+- **The raw book contains junk quotes.** Phoenix's account held bids as low as $0.001 and asks as
+  high as $9,999,999,999. Without price protection a "$1M buy" would fill against them and report
+  an impact of about 56,000 bps, so the simulator caps every order at 10% from mid, as a real
+  taker's limit price would.
+- **An AMM holding the same near-mid liquidity behaves differently.** An x·y=k pool as deep within
+  2% as Phoenix needs $2.6M per side. It has no spread, so it beats Phoenix for small trades (3.8
+  bps at $1K), but its curve is steeper: about 180 bps at $47K, where Phoenix was at 53 bps.
+
+This is one snapshot. Liquidity changes through the day, so the numbers are worth re-running
+(`python -m impact_analyzer run`) before quoting them.
 
 ## How it works
 
@@ -63,7 +92,8 @@ python -m impact_analyzer run      # live: fetch all three venues, analyze, char
 
 Other commands: `fetch` (save snapshots to `data/`), `analyze [files...]` (re-run on saved
 snapshots; defaults to the newest per venue). The public Solana RPC is rate limited; set
-`SOLANA_RPC_URL` or pass `--rpc` to use another. `pytest -m network` runs the live smoke test.
+`SOLANA_RPC_URL` or pass `--rpc` to use another. `--max-slippage 5` changes the price protection
+band (default 10%). `pytest -m network` runs the live smoke test.
 
 `run` also writes `data/playground.json`, which the interactive Order Book Playground can load to
 draw the real books and their impact curves side by side.
@@ -88,9 +118,10 @@ draw the real books and their impact curves side by side.
 ## Caveats
 
 - A snapshot is one instant. Real takers face makers who re-quote, and other takers.
-- Kraken and Coinbase return aggregated levels with limited depth (Kraken up to 500 levels,
-  Coinbase level 2 top 50). A large order can exhaust what the API shows even when the venue has
-  more; the table marks those sizes with `*`.
+- Kraken returns at most 500 aggregated levels, and Coinbase's level 2 book is aggregated too. A
+  large order can exhaust what the API shows even when the venue has more; the table marks partial
+  fills with `*`.
+- Every simulated order carries price protection: it stops 10% from mid (`--max-slippage`).
 - Fees are excluded from the order book numbers (Phoenix's taker fee is saved in the snapshot).
-- The AMM benchmark is sized to hold the same USD within 2% of mid as the first venue's book. It
+- The AMM benchmark is sized to hold the same USD within 2% of mid as the Phoenix book. It
   answers "what if this liquidity sat in an x·y=k pool instead?", not what any real pool holds.

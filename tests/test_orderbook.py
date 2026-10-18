@@ -127,6 +127,15 @@ def test_market_sell_hits_highest_bid_first(book):
     assert fills == [Fill(2, 14_990, 5), Fill(1, 14_980, 1)]
 
 
+def test_market_order_price_protection_stops_at_limit(book):
+    book.add_order(1, ASK, 15_000, 5)
+    book.add_order(2, ASK, 15_010, 5)
+    book.add_order(3, ASK, 99_999, 5)  # a junk quote far from the market
+    fills = book.market_order(BID, 100, limit_price=15_010)
+    assert filled(fills) == 10
+    assert book.best_ask() == 99_999
+
+
 def test_market_order_larger_than_book_is_partially_unfilled(book):
     book.add_order(1, ASK, 15_000, 5)
     book.add_order(2, ASK, 15_010, 5)

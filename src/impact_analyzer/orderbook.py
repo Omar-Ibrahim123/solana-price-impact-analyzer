@@ -187,16 +187,22 @@ class OrderBook:
             del book[order.price_ticks]
         return True
 
-    def market_order(self, side: Side, size_lots: int) -> list[Fill]:
-        """Buy (``Side.BID``) or sell (``Side.ASK``) ``size_lots`` at any price.
+    def market_order(
+        self, side: Side, size_lots: int, limit_price: int | None = None
+    ) -> list[Fill]:
+        """Buy (``Side.BID``) or sell (``Side.ASK``) ``size_lots`` immediately.
 
         Sweeps the opposite side from the best price outward. If the book runs
         out, the remainder is simply unfilled: compare the fills' total size
         with ``size_lots`` to detect it. Market orders never rest.
+
+        ``limit_price`` is optional price protection (immediate-or-cancel): the
+        order stops at the first level worse than it instead of sweeping the
+        whole side. Real takers almost always set one.
         """
         if size_lots <= 0:
             raise ValueError(f"size_lots must be positive, got {size_lots}")
-        return self._match(side, size_lots, limit_price=None)
+        return self._match(side, size_lots, limit_price=limit_price)
 
     def _match(self, side: Side, size_lots: int, limit_price: int | None) -> list[Fill]:
         """The matching loop, shared by limit and market orders.
